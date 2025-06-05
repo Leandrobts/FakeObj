@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Teste Isolado - JSON Type Confusion</title>
+    <style>
+        body { background: #111; color: #eee; font-family: monospace; padding: 15px; font-size: 14px; }
+        #output-advanced { /* ID usado por logS3 */
+            background: #222;
+            border: 1px solid #444;
+            padding: 10px;
+            height: 75vh; 
+            overflow-y: auto;
+            white-space: pre-wrap;
+            margin-top: 10px;
+        }
+        /* Estilos básicos de log para melhor visualização */
+        .log-info { color: #6cf; } .log-test { color: #fff; font-weight: bold; margin-top: 10px; display: block; border-top: 1px dashed #555; padding-top: 5px; }
+        .log-vuln { color: #ff4444; font-weight: bold; } .log-good { color: #4CAF50; }
+        .log-warn { color: #FFC107; } .log-error { color: #f44336; } .log-critical { color: #f0f; font-weight: bold; }
+    </style>
+</head>
+<body>
+    <h1>Teste Isolado: JSON Type Confusion UAF Speculative</h1>
+    <p>Abra o console do desenvolvedor para verificar possíveis erros que não são capturados no log da página.</p>
+    <button id="runIsolatedTestBtn">Iniciar Teste Isolado</button>
+    <div id="output-advanced"></div>
+
+    <script type="module" src="js/run_isolated_test.mjs"></script>
+</body>
+</html>
