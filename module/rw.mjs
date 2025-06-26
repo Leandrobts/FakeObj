@@ -1,6 +1,6 @@
 //rw.mjs
 
-import { Int, lohi_from_one } from './int64.mjs'; // Importa Int e lohi_from_one para manipulação de 64 bits
+import { Int, lohi_from_one } from './module/int64.mjs'; // Importa Int e lohi_from_one para manipulação de 64 bits
 
 // Classe BufferView: Estende Uint8Array e adiciona métodos para leitura/escrita de múltiplos bytes.
 // Utiliza um DataView interno para operações otimizadas.
