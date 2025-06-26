@@ -1,13 +1,15 @@
-// main.mjs
+// main.mjs (Atualizado para o novo sistema)
 
 import {
     executeExploitChain,
     FNAME_MODULE
 } from './script3/testArrayBufferVictimCrash.mjs';
-import { AdvancedInt64, setLogFunction, toHex, isAdvancedInt64Object } from './module/utils.mjs';
+// Remover AdvancedInt64 e isAdvancedInt64Object da importação
+import { setLogFunction, toHex, log } from './module/utils.mjs'; // Ajustado import
+import { Int } from './module/int64.mjs'; // Importar Int do PSFree
 
 
-// --- Gerenciamento de Elementos DOM Locais ---
+// --- Local DOM Elements Management ---
 const elementsCache = {};
 
 function getElementById(id) {
@@ -21,7 +23,7 @@ function getElementById(id) {
     return element;
 }
 
-// --- Funcionalidade de Log Local ---
+// --- Local Logging Functionality ---
 const outputDivId = 'output-advanced';
 
 export const log = (message, type = 'info', funcName = '') => {
@@ -49,7 +51,7 @@ export const log = (message, type = 'info', funcName = '') => {
     }
 };
 
-// --- Funcionalidade de Pausa Local ---
+// --- Local Pause Functionality ---
 const SHORT_PAUSE = 50;
 const MEDIUM_PAUSE = 500;
 const LONG_PAUSE = 1000;
@@ -58,7 +60,7 @@ const PAUSE = async (ms = SHORT_PAUSE) => {
     return new Promise(resolve => setTimeout(resolve, ms));
 };
 
-// --- Teste de Comportamento JIT ---
+// --- JIT Behavior Test ---
 async function testJITBehavior() {
     log("--- Iniciando Teste de Comportamento do JIT ---", 'test', 'testJITBehavior');
     let test_buf = new ArrayBuffer(16);
@@ -71,10 +73,12 @@ async function testJITBehavior() {
 
     const low = uint32_view[0];
     const high = uint32_view[1];
-    const leaked_val = new AdvancedInt64(low, high);
+    // Agora, usamos a classe Int do PSFree para representar o valor de 64 bits
+    const leaked_val = new Int(low, high);
 
     log(`Bits lidos: high=0x${high.toString(16)}, low=0x${low.toString(16)} (Valor completo: ${leaked_val.toString(true)})`, 'leak', 'testJITBehavior');
 
+    // A comparação ainda funciona com os valores numéricos brutos
     if (high === 0x7ff80000 && low === 0) {
         log("CONFIRMADO: O JIT converteu o objeto para NaN, como esperado.", 'good', 'testJITBehavior');
     } else {
@@ -84,13 +88,13 @@ async function testJITBehavior() {
 }
 
 
-// --- Lógica de Inicialização ---
+// --- Initialization Logic ---
 function initializeAndRunTest() {
     const runBtn = getElementById('runIsolatedTestBtn');
     const outputDiv = getElementById('output-advanced');
 
-    // Define a função de log em utils.mjs para que core_exploit.mjs possa usá-la
-    setLogFunction(log); // Usa a função de log do main.mjs
+    // Set the log function in utils.mjs so core_exploit.mjs can use it
+    setLogFunction(log);
 
     if (!outputDiv) {
         console.error("DIV 'output-advanced' not found. Log will not be displayed on the page.");
@@ -102,17 +106,16 @@ function initializeAndRunTest() {
             runBtn.disabled = true;
 
             if (outputDiv) {
-                outputDiv.innerHTML = ''; // Limpa logs anteriores
+                outputDiv.innerHTML = ''; // Clear previous logs
             }
             console.log("Starting isolated test");
            
 
             try {
-                // Executa o teste JIT primeiro
+                // Execute JIT test first
                 await testJITBehavior();
-                await PAUSE(MEDIUM_PAUSE); // Pausa para ler o log do teste JIT
+                await PAUSE(MEDIUM_PAUSE); // Pause to read JIT test log
 
-                // Chama a cadeia de exploração principal
                 await executeExploitChain(log, PAUSE);
             } catch (e) {
                 console.error("Critical error during isolated test execution:", e);
@@ -131,7 +134,7 @@ function initializeAndRunTest() {
     }
 }
 
-// Garante que o DOM esteja pronto
+// Ensure DOM is ready
 if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', initializeAndRunTest);
 } else {
