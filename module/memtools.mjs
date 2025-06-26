@@ -1,4 +1,4 @@
-//memtools.mjs
+//module/memtools.mjs
 
 // Este módulo contém utilitários que dependem da execução inicial do exploit.
 
