@@ -1,4 +1,4 @@
-//alert.mjs
+//module/alert.mjs
 
 // Não é possível abrir um console no navegador do PS4, então garanta que os erros
 // lançados pelo programa sejam alertados.
