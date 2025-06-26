@@ -1,4 +1,4 @@
-// int64.mjs
+//module/int64.mjs
 const isInteger = Number.isInteger;
 
 function check_not_in_range(x) {
