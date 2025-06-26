@@ -4,7 +4,7 @@
 // FOCO: Fortificar a estabilidade da alocação do ArrayBuffer/DataView usado para OOB.
 // =======================================================================================
 
-import { AdvancedInt64, toHex, isAdvancedInt64Object } from '../utils.mjs';
+import { AdvancedInt64, toHex, isAdvancedInt64Object } from '../module/utils.mjs';
 import {
     setupOOBPrimitive,
     getOOBDataView,
@@ -18,21 +18,21 @@ import {
     setupOOBMetadata,
     kernelMemory // Importa a instância global de Memory
 } from '../core_exploit.mjs';
-import { Addr } from '../mem.mjs'; // Importa Addr para compatibilidade de tipos
+import { Addr } from '../module/mem.mjs'; // Importa Addr para compatibilidade de tipos
 import {
     Int // Importa a classe Int do PSFree para manipulação de 64 bits
-} from '../int64.mjs'; // Importa int64.mjs
+} from '../module/int64.mjs'; // Importa int64.mjs
 
 import { JSC_OFFSETS, WEBKIT_LIBRARY_INFO } from '../config.mjs';
 import {
     align // Importa align de utils.mjs (PSFree)
-} from '../utils.mjs';
+} from '../module/utils.mjs';
 import {
     make_buffer, // Importa make_buffer
     find_base, // Importa find_base
     resolve_import, // Importa resolve_import
     get_view_vector // Importa get_view_vector
-} from '../memtools.mjs';
+} from '../module/memtools.mjs';
 import * as off from '../offset.mjs'; // Importa todos os offsets
 
 export const FNAME_MODULE = "v21 - Calculo ASLR CORRETO da Base WebKit"; // Versão atualizada
