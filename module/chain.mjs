@@ -1,10 +1,10 @@
 //chain.mjs
 
-import { Int, lohi_from_one } from './int64.mjs'; // Importa Int e lohi_from_one
-import { get_view_vector, init_syscall_array } from './memtools.mjs'; // Importa get_view_vector e init_syscall_array
-import { Addr } from './mem.mjs'; // Importa Addr
+import { Int, lohi_from_one } from './module/int64.mjs'; // Importa Int e lohi_from_one
+import { get_view_vector, init_syscall_array } from './module/memtools.mjs'; // Importa get_view_vector e init_syscall_array
+import { Addr } from './module/mem.mjs'; // Importa Addr
 import * as config from '../config.mjs'; // Importa configurações
-import { KB } from './constants.mjs'; // Importa KB para tamanhos de memória
+import { KB } from './module/constants.mjs'; // Importa KB para tamanhos de memória
 
 // Mapeamento de nomes de syscalls para seus números.
 export const syscall_map = new Map(Object.entries({
