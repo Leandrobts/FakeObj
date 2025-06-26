@@ -1,6 +1,6 @@
 //utils.mjs
 
-import { Int } from './module/int64.mjs'; // Importa Int para manipulação de 64 bits
+import { Int } from './int64.mjs'; // Importa Int para manipulação de 64 bits
 
 // Classe de erro customizada para "die" (parada fatal com mensagem).
 export class DieError extends Error {
