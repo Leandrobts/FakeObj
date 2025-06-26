@@ -170,15 +170,16 @@ export class Memory {
 
         init_module(this); // Inicializa a variável global 'mem' com esta instância
 
-        const off_mvec = view_m_vector; // Offset do m_vector
+        // As linhas problemáticas que manipulavam `worker` aqui foram removidas do construtor
+        // pois pertencem ao método `fakeobj()`. O construtor deve apenas inicializar.
         const buf = new ArrayBuffer(0); // Buffer vazio para criar TypedArrays temporários
 
         // Configura _cpysrc para operações de cópia de memória
         const src = new Uint8Array(buf); // Uint8Array temporário para origem da cópia
         const sset = new Uint32Array(buf); // Uint32Array para definir o m_vector e length de src
         const sset_p = this.addrof(sset); // Endereço de sset
-        sset_p.write64(off_mvec, this.addrof(src).add(off_mvec)); // Aponta sset para o m_vector de src
-        sset_p.write32(view_m_length, 3); // Define o comprimento de sset
+        sset_p.write64(off_vector, this.addrof(src).add(off_vector)); // Aponta sset para o m_vector de src
+        sset_p.write32(view_m_length / 4, 3); // Define o comprimento de sset
         this._cpysrc = src; // Armazena a referência para src
         this._src_setter = sset; // Armazena a referência para sset
 
@@ -186,8 +187,8 @@ export class Memory {
         const dst = new Uint8Array(buf); // Uint8Array temporário para destino da cópia
         const dset = new Uint32Array(buf); // Uint32Array para definir o m_vector e length de dst
         const dset_p = this.addrof(dset); // Endereço de dset
-        dset_p.write64(off_mvec, this.addrof(dst).add(off_mvec)); // Aponta dset para o m_vector de dst
-        dset_p.write32(view_m_length, 3); // Define o comprimento de dset
+        dset_p.write64(off_vector, this.addrof(dst).add(off_vector)); // Aponta dset para o m_vector de dst
+        dset_p.write32(view_m_length / 4, 3); // Define o comprimento de dset
         dset[2] = 0xffffffff; // Define um comprimento alto para o dst para permitir escrita arbitrária
         this._cpydst = dst; // Armazena a referência para dst
         this._dst_setter = dset; // Armazena a referência para dset
