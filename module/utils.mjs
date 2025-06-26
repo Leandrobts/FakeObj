@@ -1,4 +1,4 @@
-//utils.mjs
+//module/utils.mjs
 
 import { Int } from './int64.mjs'; // Importa Int para manipulação de 64 bits
 
