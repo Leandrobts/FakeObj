@@ -1,4 +1,4 @@
-//constants.mjs
+//module/constants.mjs
 
 // Constantes de tamanho de memória.
 export const KB = 1024;
