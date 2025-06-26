@@ -18,7 +18,7 @@ import {
     setupOOBMetadata,
     kernelMemory // Importa a instância global de Memory
 } from '../core_exploit.mjs';
-import { Addr } from '../mem.mjs'; // Importa Addr para compatibilidade de tipos
+import { Addr } from '../module/mem.mjs'; // Importa Addr para compatibilidade de tipos
 import {
     Int // Importa a classe Int do PSFree para manipulação de 64 bits
 } from '../int64.mjs'; // Importa int64.mjs
