@@ -1,4 +1,4 @@
-//offset.mjs
+//module/offset.mjs
 
 // WebKit offsets start
 
