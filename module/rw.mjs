@@ -1,4 +1,4 @@
-//rw.mjs
+//module/rw.mjs
 
 import { Int, lohi_from_one } from './int64.mjs'; // Importa Int e lohi_from_one para manipulação de 64 bits
 
