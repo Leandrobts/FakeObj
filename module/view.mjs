@@ -1,11 +1,11 @@
 //view.mjs
 
-import { Int, lohi_from_one } from './module/int64.mjs'; // Importa Int e lohi_from_one para manipulação de 64 bits
-import { Addr } from './module/mem.mjs'; // Importa Addr para representação de endereços de memória
-import { BufferView } from './module/rw.mjs'; // Importa BufferView para operações de leitura/escrita em blocos
+import { Int, lohi_from_one } from './int64.mjs'; // Importa Int e lohi_from_one para manipulação de 64 bits
+import { Addr } from './mem.mjs'; // Importa Addr para representação de endereços de memória
+import { BufferView } from './rw.mjs'; // Importa BufferView para operações de leitura/escrita em blocos
 
 import * as config from '../config.mjs'; // Importa configurações do exploit
-import * as mt from './module/memtools.mjs'; // Importa funções de ferramentas de memória
+import * as mt from './memtools.mjs'; // Importa funções de ferramentas de memória
 
 // O construtor das classes View sempre obterá a propriedade 'buffer'
 // para garantir que o JSArrayBufferView seja um WastefulTypedArray.
