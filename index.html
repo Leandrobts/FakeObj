@@ -1,31 +1,47 @@
-<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="UTF-8">
-    <title>Teste Isolado - JSON Type Confusion</title>
-    <style>
-        body { background: #111; color: #eee; font-family: monospace; padding: 15px; font-size: 14px; }
-        #output-advanced { /* ID usado por logS3 */
-            background: #222;
-            border: 1px solid #444;
-            padding: 10px;
-            height: 75vh; 
-            overflow-y: auto;
-            white-space: pre-wrap;
-            margin-top: 10px;
-        }
-        /* Estilos básicos de log para melhor visualização */
-        .log-info { color: #6cf; } .log-test { color: #fff; font-weight: bold; margin-top: 10px; display: block; border-top: 1px dashed #555; padding-top: 5px; }
-        .log-vuln { color: #ff4444; font-weight: bold; } .log-good { color: #4CAF50; }
-        .log-warn { color: #FFC107; } .log-error { color: #f44336; } .log-critical { color: #f0f; font-weight: bold; }
-    </style>
-</head>
-<body>
-    <h1>Teste Isolado: JSON Type Confusion UAF Speculative</h1>
-    <p>Abra o console do desenvolvedor para verificar possíveis erros que não são capturados no log da página.</p>
-    <button id="runIsolatedTestBtn">Iniciar Teste Isolado</button>
-    <div id="output-advanced"></div>
+<!-- Copyright (C) 2023-2025 anonymous
 
-    <script type="module" src="js/run_isolated_test.mjs"></script>
-</body>
+This file is part of PSFree.
+
+PSFree is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as
+published by the Free Software Foundation, either version 3 of the
+License, or (at your option) any later version.
+
+PSFree is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program.  If not, see <https://www.gnu.org/licenses/>.
+-->
+<html>
+    <head>
+        <meta charset='utf-8'>
+        <title>PSFree-Lapse Exploit For PS4 9.00</title>
+        <style>
+            @font-face {
+                font-family: 'logging';
+                src: url('fonts/LiberationMono-Regular.ttf');
+            }
+            #console {
+                font-family: 'logging';
+            }
+        </style>
+        <script>
+        if (window.applicationCache.status=='0')
+        {
+          window.location.replace("cache.html");
+        }
+        </script>
+    </head>
+    <body>
+        PSFree: A PS4/PS5 Exploit Chain<br>
+        Donation (Monero/XMR):<br>
+        86Fk3X9AE94EGKidzRbvyiVgGNYD3qZnuKNq1ZbsomFWXHYm6TtAgz9GNGitPWadkS3Wr9uXoT29U1SfdMtJ7QNKQpW1CVS<br>
+        See <a href='./about.html' data-jslicense='1'>JavaScript license information</a> for the
+        source code and license.<br>
+        <pre id='console'></pre>
+    </body>
+    <script type='module' src='./alert.mjs'></script>
 </html>
