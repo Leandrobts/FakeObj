@@ -12,8 +12,8 @@ but WITHOUT ANY WARRANTY; without even the implied warranty of
 MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU Affero General Public License for more details.  */
 
-import { Int, lohi_from_one } from './module/int64.mjs'; // Importa Int e lohi_from_one para manipulação de 64 bits
-import { view_m_vector, view_m_length } from './module/offset.mjs'; // Importa offsets de TypedArrayView
+import { Int, lohi_from_one } from './int64.mjs'; // Importa Int e lohi_from_one para manipulação de 64 bits
+import { view_m_vector, view_m_length } from './offset.mjs'; // Importa offsets de TypedArrayView
 
 export let mem = null; // Variável global para a instância de Memory
 
