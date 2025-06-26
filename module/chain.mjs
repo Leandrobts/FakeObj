@@ -1,4 +1,4 @@
-//chain.mjs
+//module/chain.mjs
 
 import { Int, lohi_from_one } from './int64.mjs'; // Importa Int e lohi_from_one
 import { get_view_vector, init_syscall_array } from './memtools.mjs'; // Importa get_view_vector e init_syscall_array
