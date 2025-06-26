@@ -2,13 +2,13 @@
 
 // Este módulo contém utilitários que dependem da execução inicial do exploit.
 
-import { Int } from './module/int64.mjs'; // Importa Int para manipulação de inteiros de 64 bits
-import { mem } from './module/mem.mjs'; // Importa a instância global de Memory
+import { Int } from './int64.mjs'; // Importa Int para manipulação de inteiros de 64 bits
+import { mem } from './mem.mjs'; // Importa a instância global de Memory
 import { align } from './utils.mjs'; // Importa a função align de utils.mjs
-import { page_size } from './module/offset.mjs'; // Importa o tamanho da página
-import { BufferView } from './module/rw.mjs'; // Importa BufferView para manipulação de buffers
-import { View1 } from './module/view.mjs'; // Importa View1 para manipulação de arrays de 8 bits
-import * as off from './module/offset.mjs'; // Importa todos os offsets
+import { page_size } from './offset.mjs'; // Importa o tamanho da página
+import { BufferView } from './rw.mjs'; // Importa BufferView para manipulação de buffers
+import { View1 } from './view.mjs'; // Importa View1 para manipulação de arrays de 8 bits
+import * as off from './offset.mjs'; // Importa todos os offsets
 
 // Cria um ArrayBuffer cujo conteúdo é copiado de um endereço de memória arbitrária.
 export function make_buffer(addr, size) {
