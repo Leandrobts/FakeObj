@@ -1,16 +1,4 @@
-/* Copyright (C) 2023-2025 anonymous
-
-This file is part of PSFree.
-
-PSFree is free software: you can redistribute it and/or modify
-it under the terms of the GNU Affero General Public License as
-published by the Free Software Foundation, either version 3 of the
-License, or (at your option) any later version.
-
-PSFree is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-GNU Affero General Public License for more details.  */
+//module/mem.mjs
 
 import { Int, lohi_from_one } from './int64.mjs'; // Importa Int e lohi_from_one para manipulação de 64 bits
 import { view_m_vector, view_m_length } from './offset.mjs'; // Importa offsets de TypedArrayView
