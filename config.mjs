@@ -1,4 +1,18 @@
-//config.mjs
+// config.mjs
+
+/* Copyright (C) 2023-2025 anonymous
+
+This file is part of PSFree.
+
+PSFree is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as
+published by the Free Software Foundation, either version 3 of the
+License, or (at your option) any later version.
+
+PSFree is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU Affero General Public License for more details.  */
 
 // webkitgtk 2.34.4 foi usado para desenvolver as partes portáteis do exploit
 // antes de migrar para ps4 8.03.
@@ -78,11 +92,13 @@ export const JSC_OFFSETS = {
         CACHED_OWN_KEYS_OFFSET: 0x48,
         CLASS_INFO_OFFSET: 0x50,
     },
+    // CORREÇÃO AQUI: MESCLANDO PROPRIEDADES DE JSOBJECT
     JSObject: {
         BUTTERFLY_OFFSET: 0x10,
-        // Adicionados do PSFree:
         js_inline_prop: 0x10, // Start of the array of inline properties (JSValues)
-        size_jsobj: 0x10 // sizeof JSC::JSObject
+        size_jsobj: 0x10, // sizeof JSC::JSObject
+        jsta_impl: 0x18, // offset to m_wrapped, pointer to a DOM object for HTMLTextAreaElement
+        size_jsta: 0x20 // sizeof WebCore::JSHTMLTextAreaElement
     },
     JSFunction: {
         EXECUTABLE_OFFSET: 0x18, // VALIDADO
@@ -158,10 +174,7 @@ export const JSC_OFFSETS = {
     },
     // Adicionado do PSFree:
     EXPECTED_BUTTERFLY_ELEMENT_SIZE: 8, // Constante para JSValue (8 bytes)
-    JSObject: { // Duplicado, mas mantido para clareza da integração
-        jsta_impl: 0x18, // offset to m_wrapped, pointer to a DOM object for HTMLTextAreaElement
-        size_jsta: 0x20 // sizeof WebCore::JSHTMLTextAreaElement
-    },
+
     WEBKIT_IMPORTS: { // Offsets de funções importadas pelo WebKit (para FW 9.00)
         offset_wk_stack_chk_fail: 0x178, // offset to __stack_chk_fail
         offset_wk_memcpy: 0x188 // offset to memcpy
