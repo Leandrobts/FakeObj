@@ -5,7 +5,8 @@ import {
     FNAME_MODULE
 } from './script3/testArrayBufferVictimCrash.mjs';
 // Remover AdvancedInt64 e isAdvancedInt64Object da importação
-import { setLogFunction, toHex, log } from './module/utils.mjs'; // Ajustado import
+// Apenas importar setLogFunction e toHex de utils.mjs, pois log é declarado localmente.
+import { setLogFunction, toHex } from './module/utils.mjs'; // REMOVIDO 'log' da importação
 import { Int } from './module/int64.mjs'; // Importar Int do PSFree
 
 
@@ -26,7 +27,8 @@ function getElementById(id) {
 // --- Local Logging Functionality ---
 const outputDivId = 'output-advanced';
 
-export const log = (message, type = 'info', funcName = '') => {
+// Esta é a declaração principal da função log
+export const log = (message, type = 'info', funcName = '') => { //
     const outputDiv = getElementById(outputDivId);
     if (!outputDiv) {
         console.error(`Log target div "${outputDivId}" not found. Message: ${message}`);
@@ -94,7 +96,7 @@ function initializeAndRunTest() {
     const outputDiv = getElementById('output-advanced');
 
     // Set the log function in utils.mjs so core_exploit.mjs can use it
-    setLogFunction(log);
+    setLogFunction(log); // Usa a função de log do main.mjs
 
     if (!outputDiv) {
         console.error("DIV 'output-advanced' not found. Log will not be displayed on the page.");
