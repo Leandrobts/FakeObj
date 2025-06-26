@@ -4,7 +4,7 @@ import {
     executeExploitChain,
     FNAME_MODULE
 } from './script3/testArrayBufferVictimCrash.mjs';
-import { AdvancedInt64, setLogFunction, toHex, isAdvancedInt64Object } from './utils.mjs';
+import { AdvancedInt64, setLogFunction, toHex, isAdvancedInt64Object } from './module/utils.mjs';
 
 
 // --- Gerenciamento de Elementos DOM Locais ---
