@@ -1,4 +1,4 @@
-//view.mjs
+//module/view.mjs
 
 import { Int, lohi_from_one } from './int64.mjs'; // Importa Int e lohi_from_one para manipulação de 64 bits
 import { Addr } from './mem.mjs'; // Importa Addr para representação de endereços de memória
