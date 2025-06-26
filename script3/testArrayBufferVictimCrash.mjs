@@ -33,7 +33,7 @@ import {
     resolve_import, // Importa resolve_import
     get_view_vector // Importa get_view_vector
 } from '../module/memtools.mjs';
-import * as off from '../offset.mjs'; // Importa todos os offsets
+import * as off from '../module/offset.mjs'; // Importa todos os offsets
 
 export const FNAME_MODULE = "v21 - Calculo ASLR CORRETO da Base WebKit"; // Versão atualizada
 
