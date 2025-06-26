@@ -1,4 +1,4 @@
-// js/script3/testArrayBufferVictimCrash.mjs (v22 - Calculo ASLR CORRETO da Base WebKit - Integrado com PSFree - VERSÃO DE DEPURACAO)
+//script3/testArrayBufferVictimCrash.mjs (v22 - Calculo ASLR CORRETO da Base WebKit - Integrado com PSFree - VERSÃO DE DEPURACAO)
 
 // =======================================================================================
 // ESTA VERSÃO TENTA BYPASSAR AS MITIGAÇÕES DO m_vector MANIPULANDO OFFSETS DE CONTROLE.
