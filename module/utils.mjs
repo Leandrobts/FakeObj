@@ -25,12 +25,24 @@ export class DieError extends Error {
 }
 
 export function die(msg='') {
-    throw new DieError(msg);
+    const error = new DieError(msg);
+    log(`ERROR: ${error.name}: ${error.message}\nStack: ${error.stack}`); // Adicionado log mais verboso para die
+    throw error;
 }
 
 const console = document.getElementById('console');
 export function log(msg='') {
-    console.append(msg + '\n');
+    const now = new Date();
+    const timestamp = now.toLocaleString('pt-BR', { // Ajustado para fuso horário e formato local do Brasil
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false
+    });
+    console.append(`[${timestamp}] ${msg}\n`); // Adicionado timestamp ao log
 }
 
 export function clear_log() {
@@ -58,12 +70,17 @@ export async function send(url, buffer, file_name, onload=() => {}) {
     form.append('upload', file);
 
     log('send');
-    const response = await fetch(url, {method: 'POST', body: form});
+    try {
+        const response = await fetch(url, {method: 'POST', body: form});
 
-    if (!response.ok) {
-        throw Error(`Network response was not OK, status: ${response.status}`);
+        if (!response.ok) {
+            throw new Error(`Network response was not OK, status: ${response.status}`);
+        }
+        onload();
+    } catch (e) {
+        log(`Error sending file: ${e.message}`); // Log de erro na função send
+        throw e;
     }
-    onload();
 }
 
 // mostly used to yield to the GC. marking is concurrent but collection isn't
@@ -111,7 +128,7 @@ export function hexdump(view) {
 
         let print = '';
         for (let j = 0; j < 16; j++) {
-            print += chr(view[j]);
+            print += chr(view[i + j]); // Corrigido o índice aqui
         }
 
         bytes.push([`${long1}  ${long2}`, print]);
