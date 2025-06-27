@@ -1,13 +1,13 @@
-// main.mjs (Atualizado para o novo sistema)
+// main.mjs (Atualizado para o novo sistema de teste)
 
 import {
     executeExploitChain,
+    testAndStabilizeCorePrimitives, // IMPORTADA NOVA FUNÇÃO DE TESTE
     FNAME_MODULE
 } from './script3/testArrayBufferVictimCrash.mjs';
-// Remover AdvancedInt64 e isAdvancedInt64Object da importação
 // Apenas importar setLogFunction e toHex de utils.mjs, pois log é declarado localmente.
-import { setLogFunction, toHex } from './module/utils.mjs'; // REMOVIDO 'log' da importação
-import { Int } from './module/int64.mjs'; // Importar Int do PSFree
+import { setLogFunction, toHex } from './module/utils.mjs';
+import { Int } from './module/int64.mjs';
 
 
 // --- Local DOM Elements Management ---
@@ -28,7 +28,7 @@ function getElementById(id) {
 const outputDivId = 'output-advanced';
 
 // Esta é a declaração principal da função log
-export const log = (message, type = 'info', funcName = '') => { //
+export const log = (message, type = 'info', funcName = '') => {
     const outputDiv = getElementById(outputDivId);
     if (!outputDiv) {
         console.error(`Log target div "${outputDivId}" not found. Message: ${message}`);
@@ -75,12 +75,10 @@ async function testJITBehavior() {
 
     const low = uint32_view[0];
     const high = uint32_view[1];
-    // Agora, usamos a classe Int do PSFree para representar o valor de 64 bits
     const leaked_val = new Int(low, high);
 
     log(`Bits lidos: high=0x${high.toString(16)}, low=0x${low.toString(16)} (Valor completo: ${leaked_val.toString(true)})`, 'leak', 'testJITBehavior');
 
-    // A comparação ainda funciona com os valores numéricos brutos
     if (high === 0x7ff80000 && low === 0) {
         log("CONFIRMADO: O JIT converteu o objeto para NaN, como esperado.", 'good', 'testJITBehavior');
     } else {
@@ -93,10 +91,10 @@ async function testJITBehavior() {
 // --- Initialization Logic ---
 function initializeAndRunTest() {
     const runBtn = getElementById('runIsolatedTestBtn');
+    const stabilizationBtn = getElementById('runStabilizationTestBtn'); // NOVO BOTÃO
     const outputDiv = getElementById('output-advanced');
 
-    // Set the log function in utils.mjs so core_exploit.mjs can use it
-    setLogFunction(log); // Usa a função de log do main.mjs
+    setLogFunction(log);
 
     if (!outputDiv) {
         console.error("DIV 'output-advanced' not found. Log will not be displayed on the page.");
@@ -104,35 +102,55 @@ function initializeAndRunTest() {
 
     if (runBtn) {
         runBtn.addEventListener('click', async () => {
-            if (runBtn.disabled) return;
+            if (runBtn.disabled || stabilizationBtn.disabled) return;
             runBtn.disabled = true;
+            stabilizationBtn.disabled = true;
 
-            if (outputDiv) {
-                outputDiv.innerHTML = ''; // Clear previous logs
-            }
-            console.log("Starting isolated test");
-           
+            if (outputDiv) outputDiv.innerHTML = '';
+            console.log("Starting full exploit chain");
 
             try {
-                // Execute JIT test first
                 await testJITBehavior();
-                await PAUSE(MEDIUM_PAUSE); // Pause to read JIT test log
-
+                await PAUSE(MEDIUM_PAUSE);
                 await executeExploitChain(log, PAUSE);
             } catch (e) {
-                console.error("Critical error during isolated test execution:", e);
+                console.error("Critical error during full exploit execution:", e);
                 log(`[CRITICAL TEST ERROR] ${String(e.message).replace(/</g, "&lt;").replace(/>/g, "&gt;")}\n`, 'critical');
             } finally {
-                console.log("Isolated test concluded.");
-                log("Isolated test finished.\n", 'test');
+                console.log("Full exploit chain concluded.");
+                log("Full exploit chain finished.\n", 'test');
                 runBtn.disabled = false;
-                if (document.title.includes(FNAME_MODULE) && !document.title.includes("SUCCESS") && !document.title.includes("Fail") && !document.title.includes("OK") && !document.title.includes("Confirmed")) {
-                    document.title = `${FNAME_MODULE}_Done`;
-                }
+                stabilizationBtn.disabled = false;
             }
         });
     } else {
         console.error("Button 'runIsolatedTestBtn' not found.");
+    }
+
+    // LÓGICA PARA O NOVO BOTÃO DE TESTE DE ESTABILIZAÇÃO
+    if (stabilizationBtn) {
+        stabilizationBtn.addEventListener('click', async () => {
+            if (runBtn.disabled || stabilizationBtn.disabled) return;
+            runBtn.disabled = true;
+            stabilizationBtn.disabled = true;
+
+            if (outputDiv) outputDiv.innerHTML = '';
+            console.log("Starting core primitive stabilization test");
+
+            try {
+                await testAndStabilizeCorePrimitives(log, PAUSE);
+            } catch (e) {
+                console.error("Critical error during stabilization test:", e);
+                log(`[CRITICAL STABILIZATION ERROR] ${String(e.message).replace(/</g, "&lt;").replace(/>/g, "&gt;")}\n`, 'critical');
+            } finally {
+                console.log("Stabilization test concluded.");
+                log("Stabilization test finished.\n", 'test');
+                runBtn.disabled = false;
+                stabilizationBtn.disabled = false;
+            }
+        });
+    } else {
+        console.error("Button 'runStabilizationTestBtn' not found.");
     }
 }
 
@@ -141,5 +159,4 @@ if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', initializeAndRunTest);
 } else {
     initializeAndRunTest();
-    
 }
