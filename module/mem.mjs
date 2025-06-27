@@ -1,13 +1,14 @@
-//module/mem.mjs
+//module/mem.mjs (ATUALIZADO)
 
 import { Int, lohi_from_one } from './int64.mjs'; // Importa Int e lohi_from_one para manipulação de 64 bits
-import { view_m_vector, view_m_length } from './offset.mjs'; // Importa offsets de TypedArrayView
+import { JSC_OFFSETS } from '../config.mjs'; // ADICIONADO: Importa do config consolidado
 
 export let mem = null; // Variável global para a instância de Memory
 
-// Cache de constantes
-const off_vector = view_m_vector / 4; // Offset do m_vector em termos de Uint32Array
-const off_vector2 = (view_m_vector + 4) / 4; // Offset da segunda parte (high) do m_vector
+// Cache de constantes, agora usando os offsets de config.mjs
+const off_vector = JSC_OFFSETS.ArrayBufferView.M_VECTOR_OFFSET / 4; // Offset do m_vector em termos de Uint32Array
+const off_vector2 = (JSC_OFFSETS.ArrayBufferView.M_VECTOR_OFFSET + 4) / 4; // Offset da segunda parte (high) do m_vector
+const off_length = JSC_OFFSETS.ArrayBufferView.M_LENGTH_OFFSET / 4; // Offset do m_length em termos de Uint32Array
 const isInteger = Number.isInteger; // Atalho para Number.isInteger
 
 function init_module(memory) {
@@ -154,32 +155,30 @@ export class Memory {
 
         // Expande o comprimento do 'main' para o máximo possível (0xFFFFFFFF)
         // Isso permite que o 'worker' (DataView) acesse arbitrariamente a memória
-        main[view_m_length / 4] = 0xffffffff;
+        main[off_length] = 0xffffffff;
 
         init_module(this); // Inicializa a variável global 'mem' com esta instância
 
-        // As linhas problemáticas que manipulavam `worker` aqui foram removidas do construtor
-        // pois pertencem ao método `fakeobj()`. O construtor deve apenas inicializar.
         const buf = new ArrayBuffer(0); // Buffer vazio para criar TypedArrays temporários
 
         // Configura _cpysrc para operações de cópia de memória
-        const src = new Uint8Array(buf); // Uint8Array temporário para origem da cópia
-        const sset = new Uint32Array(buf); // Uint32Array para definir o m_vector e length de src
-        const sset_p = this.addrof(sset); // Endereço de sset
-        sset_p.write64(off_vector, this.addrof(src).add(off_vector)); // Aponta sset para o m_vector de src
-        sset_p.write32(view_m_length / 4, 3); // Define o comprimento de sset
-        this._cpysrc = src; // Armazena a referência para src
-        this._src_setter = sset; // Armazena a referência para sset
+        const src = new Uint8Array(buf);
+        const sset = new Uint32Array(buf);
+        const sset_p = this.addrof(sset);
+        sset_p.write64(off_vector, this.addrof(src).add(off_vector));
+        sset_p.write32(off_length, 3);
+        this._cpysrc = src;
+        this._src_setter = sset;
 
         // Configura _cpydst para operações de cópia de memória
-        const dst = new Uint8Array(buf); // Uint8Array temporário para destino da cópia
-        const dset = new Uint32Array(buf); // Uint32Array para definir o m_vector e length de dst
-        const dset_p = this.addrof(dset); // Endereço de dset
-        dset_p.write64(off_vector, this.addrof(dst).add(off_vector)); // Aponta dset para o m_vector de dst
-        dset_p.write32(view_m_length / 4, 3); // Define o comprimento de dset
-        dset[2] = 0xffffffff; // Define um comprimento alto para o dst para permitir escrita arbitrária
-        this._cpydst = dst; // Armazena a referência para dst
-        this._dst_setter = dset; // Armazena a referência para dset
+        const dst = new Uint8Array(buf);
+        const dset = new Uint32Array(buf);
+        const dset_p = this.addrof(dset);
+        dset_p.write64(off_vector, this.addrof(dst).add(off_vector));
+        dset_p.write32(off_length, 3);
+        dset[2] = 0xffffffff;
+        this._cpydst = dst;
+        this._dst_setter = dset;
     }
 
     // Copia 'len' bytes de 'src' para 'dst'. 'dst' e 'src' podem se sobrepor.
@@ -219,8 +218,7 @@ export class Memory {
         }
 
         const backer = new Float64Array(size); // Aloca um Float64Array para backing
-        // Retorna o endereço do buffer da Float64Array e a própria Float64Array como backer.
-        return [mem.addrof(backer).readp(view_m_vector), backer];
+        return [mem.addrof(backer).readp(JSC_OFFSETS.ArrayBufferView.M_VECTOR_OFFSET), backer];
     }
 
     // Cria um objeto JavaScript "falso" em um dado endereço.
