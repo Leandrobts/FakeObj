@@ -1,14 +1,8 @@
-// main.mjs (Atualizado para o novo sistema)
-
 import {
-    executeExploitChain,
+    executeTypedArrayVictimAddrofAndWebKitLeak_R43,
     FNAME_MODULE
 } from './script3/testArrayBufferVictimCrash.mjs';
-// Remover AdvancedInt64 e isAdvancedInt64Object da importação
-// Apenas importar setLogFunction e toHex de utils.mjs, pois log é declarado localmente.
-import { setLogFunction, toHex } from './utils.mjs'; // REMOVIDO 'log' da importação
-import { Int } from './module/int64.mjs'; // Importar Int do PSFree
-
+import { AdvancedInt64, setLogFunction, toHex, isAdvancedInt64Object } from './module/utils.mjs'; // Caminho alterado
 
 // --- Local DOM Elements Management ---
 const elementsCache = {};
@@ -27,8 +21,7 @@ function getElementById(id) {
 // --- Local Logging Functionality ---
 const outputDivId = 'output-advanced';
 
-// Esta é a declaração principal da função log
-export const log = (message, type = 'info', funcName = '') => { //
+export const log = (message, type = 'info', funcName = '') => {
     const outputDiv = getElementById(outputDivId);
     if (!outputDiv) {
         console.error(`Log target div "${outputDivId}" not found. Message: ${message}`);
@@ -75,12 +68,10 @@ async function testJITBehavior() {
 
     const low = uint32_view[0];
     const high = uint32_view[1];
-    // Agora, usamos a classe Int do PSFree para representar o valor de 64 bits
-    const leaked_val = new Int(low, high);
+    const leaked_val = new AdvancedInt64(low, high);
 
     log(`Bits lidos: high=0x${high.toString(16)}, low=0x${low.toString(16)} (Valor completo: ${leaked_val.toString(true)})`, 'leak', 'testJITBehavior');
 
-    // A comparação ainda funciona com os valores numéricos brutos
     if (high === 0x7ff80000 && low === 0) {
         log("CONFIRMADO: O JIT converteu o objeto para NaN, como esperado.", 'good', 'testJITBehavior');
     } else {
@@ -96,7 +87,7 @@ function initializeAndRunTest() {
     const outputDiv = getElementById('output-advanced');
 
     // Set the log function in utils.mjs so core_exploit.mjs can use it
-    setLogFunction(log); // Usa a função de log do main.mjs
+    setLogFunction(log);
 
     if (!outputDiv) {
         console.error("DIV 'output-advanced' not found. Log will not be displayed on the page.");
@@ -118,7 +109,7 @@ function initializeAndRunTest() {
                 await testJITBehavior();
                 await PAUSE(MEDIUM_PAUSE); // Pause to read JIT test log
 
-                await executeExploitChain(log, PAUSE);
+                await executeTypedArrayVictimAddrofAndWebKitLeak_R43(log, PAUSE, JSC_OFFSETS);
             } catch (e) {
                 console.error("Critical error during isolated test execution:", e);
                 log(`[CRITICAL TEST ERROR] ${String(e.message).replace(/</g, "&lt;").replace(/>/g, "&gt;")}\n`, 'critical');
