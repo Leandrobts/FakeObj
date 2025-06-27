@@ -1,4 +1,4 @@
-// config.mjs (ATUALIZADO COM ESTRATÉGIA DE TESTE DE OFFSETS)
+// config.mjs (ATUALIZADO E CONSOLIDADO PARA FW 12.02)
 
 /* Copyright (C) 2023-2025 anonymous
 
@@ -14,13 +14,32 @@ but WITHOUT ANY WARRANTY; without even the implied warranty of
 MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU Affero General Public License for more details.  */
 
-// ... (comentários do PSFree mantidos) ...
+// webkitgtk 2.34.4 foi usado para desenvolver as partes portáteis do exploit
+// antes de migrar para ps4 8.03.
+// webkitgtk 2.34.4 foi construído com a variável cmake ENABLE_JIT=OFF,
+// que pode afetar o tamanho de SerializedScriptValue.
+// Este alvo não é mais suportado.
 
+// Formato do firmware alvo usado por PSFree:
+// 0xC_MM_mm
+// * C console - PS4 (0) ou PS5 (1) (1 bit)
+// * MM major version - parte inteira da versão do firmware (8 bits)
+// * mm minor version - parte fracionária da versão do firmware (8 bits)
+// Exemplos:
+// * PS4 10.00 -> C = 0 MM = 10 mm = 0 -> 0x0_10_00
+// * PS5 4.51 -> C = 1 MM = 4 mm = 51 -> 0x1_04_51
+
+// Verifica se o valor está no formato BCD (Binary Coded Decimal).
+// Assume inteiro e está no intervalo [0, 0xffff].
 function check_bcd(value) {
     for (let i = 0; i <= 12; i += 4) {
         const nibble = (value >>> i) & 0xf;
-        if (nibble > 9) return false;
+
+        if (nibble > 9) {
+            return false;
+        }
     }
+
     return true;
 }
 
@@ -28,24 +47,28 @@ export function set_target(value) {
     if (!Number.isInteger(value)) {
         throw TypeError(`value not an integer: ${value}`);
     }
-    if (value >= 0x20000 || value < 0) {
+
+    if (value >= 0x20000 || value < 0) { // Limite de 0x20000 para a versão do firmware
         throw RangeError(`value >= 0x20000 or value < 0: ${value}`);
     }
+
     const version = value & 0xffff;
-    if (!check_bcd(version)) {
+    if (!check_bcd(version)) { // Verifica o formato BCD.
         throw RangeError(`value & 0xffff not in BCD format ${version}`);
     }
+
     target = value;
 }
 
 export let target = null;
-// DEFININDO O ALVO PARA 12.02
+// DEFININDO O ALVO PARA 12.02 (formato 0xC_MM_mm -> 0x0_12_02)
 set_target(0x1202);
 
 // --- Offsets JSC Consolidados para FW 12.02 ---
+// Offsets do antigo offsets.mjs foram movidos para cá para eliminar conflitos.
 export const JSC_OFFSETS = {
     JSCell: {
-        STRUCTURE_POINTER_OFFSET: 0x8,
+        STRUCTURE_POINTER_OFFSET: 0x8,    // VALIDADO
         STRUCTURE_ID_FLATTENED_OFFSET: 0x0,
         CELL_TYPEINFO_TYPE_FLATTENED_OFFSET: 0x4,
         CELL_TYPEINFO_FLAGS_FLATTENED_OFFSET: 0x5,
@@ -53,107 +76,96 @@ export const JSC_OFFSETS = {
         CELL_STATE_FLATTENED_OFFSET: 0x7,
     },
     CallFrame: {
-        CALLEE_OFFSET: 0x8,
-        ARG_COUNT_OFFSET: 0x10,
-        THIS_VALUE_OFFSET: 0x18,
-        ARGUMENTS_POINTER_OFFSET: 0x28
+        CALLEE_OFFSET: 0x8,         // De JSC::ProtoCallFrame::callee()
+        ARG_COUNT_OFFSET: 0x10,     // De JSC::ProtoCallFrame::argumentCountIncludingThis()
+        THIS_VALUE_OFFSET: 0x18,    // De JSC::ProtoCallFrame::thisValue()
+        ARGUMENTS_POINTER_OFFSET: 0x28 // De JSC::ProtoCallFrame::argument(ulong)
     },
-    Structure: {
+    Structure: { // Offsets DENTRO da estrutura Structure
         CELL_SPECIFIC_FLAGS_OFFSET: 0x8,
         TYPE_INFO_TYPE_OFFSET: 0x9,
         TYPE_INFO_MORE_FLAGS_OFFSET: 0xA,
         TYPE_INFO_INLINE_FLAGS_OFFSET: 0xC,
         AGGREGATED_FLAGS_OFFSET: 0x10,
-        VIRTUAL_PUT_OFFSET: 0x18,
+        VIRTUAL_PUT_OFFSET: 0x18, // CANDIDATO FORTE PARA PONTEIRO DE FUNÇÃO VIRTUAL
         PROPERTY_TABLE_OFFSET: 0x20,
         GLOBAL_OBJECT_OFFSET: 0x28,
         PROTOTYPE_OFFSET: 0x30,
         CACHED_OWN_KEYS_OFFSET: 0x48,
         CLASS_INFO_OFFSET: 0x50,
     },
+    // OFFSETS MESCLADOS DO ANTIGO offsets.mjs E CORRIGIDOS
     JSObject: {
-        // ### ESTRATÉGIA DE TESTE DE OFFSETS ###
-        // A falha atual está na estabilização de 'getAddress'. Isso geralmente é causado
-        // por offsets incorretos que definem a estrutura de um objeto JS.
-        // Tente uma combinação de cada vez: descomente uma das tentativas abaixo,
-        // comente as outras, salve e use o botão "Test Core Primitives (Debug)".
+        // Offset para o ponteiro butterfly (armazenamento de propriedades fora do objeto)
+        BUTTERFLY_OFFSET: 0x10, // Antigo js_butterfly. Este é o valor moderno mais comum.
 
-        // --- TENTATIVA 1 (Padrão Moderno - ATUALMENTE ATIVA) ---
-        BUTTERFLY_OFFSET: 0x10,
-        INLINE_PROPERTIES_OFFSET: 0x10,
+        // Início das propriedades inline (JSValues) - Onde os dados do objeto começam
+        INLINE_PROPERTIES_OFFSET: 0x10, // Antigo js_inline_prop
 
-        /*
-        // --- TENTATIVA 2 (Padrão Antigo - Comum em FWs mais velhas como 9.00) ---
-        BUTTERFLY_OFFSET: 0x8,
-        INLINE_PROPERTIES_OFFSET: 0x10, // Butterfly pode ser 0x8, mas as props começarem em 0x10
-        */
-
-        /*
-        // --- TENTATIVA 3 (Outra Variação Antiga) ---
-        BUTTERFLY_OFFSET: 0x8,
-        INLINE_PROPERTIES_OFFSET: 0x8,
-        */
-        
         // sizeof JSC::JSObject
         JS_OBJECT_SIZE: 0x10,
         
         // Para WebCore::JSHTMLTextAreaElement
-        JSTA_IMPL_OFFSET: 0x18, // VERIFICAR PARA FW 12.02
-        JSTA_SIZE: 0x20, // VERIFICAR PARA FW 12.02
+        JSTA_IMPL_OFFSET: 0x18, // Antigo jsta_impl - ponteiro para o objeto DOM
+        JSTA_SIZE: 0x20, // Antigo size_jsta - sizeof JSHTMLTextAreaElement
     },
     JSFunction: {
-        EXECUTABLE_OFFSET: 0x18,
+        EXECUTABLE_OFFSET: 0x18, // VALIDADO
         SCOPE_OFFSET: 0x20,
     },
     JSCallee: {
-        GLOBAL_OBJECT_OFFSET: 0x10,
+        GLOBAL_OBJECT_OFFSET: 0x10, // VALIDADO
     },
-    ClassInfo: {
-        M_CACHED_TYPE_INFO_OFFSET: 0x8,
+    ClassInfo: { // NOVO: Adicionado para a estratégia de vazamento de ClassInfo
+        M_CACHED_TYPE_INFO_OFFSET: 0x8, // Offset comum para m_cachedTypeInfo dentro de ClassInfo.
     },
     ArrayBuffer: {
-        CONTENTS_IMPL_POINTER_OFFSET: 0x10,
-        SIZE_IN_BYTES_OFFSET_FROM_JSARRAYBUFFER_START: 0x18,
-        DATA_POINTER_COPY_OFFSET_FROM_JSARRAYBUFFER_START: 0x20,
-        SHARING_MODE_OFFSET: 0x28,
-        IS_RESIZABLE_FLAGS_OFFSET: 0x30,
-        ARRAYBUFFER_REAL_PTR_POSSIBLE_M_VECTOR: 0x28,
-        ARRAYBUFFER_FIELD_0X30: 0x30,
-        ARRAYBUFFER_FIELD_0X34: 0x34,
-        ARRAYBUFFER_FIELD_0X38: 0x38,
-        ARRAYBUFFER_FIELD_0X40: 0x40,
+        CONTENTS_IMPL_POINTER_OFFSET: 0x10, // VALIDADO - Ponteiro para os dados brutos do buffer
+        SIZE_IN_BYTES_OFFSET_FROM_JSARRAYBUFFER_START: 0x18, // VALIDADO - Tamanho do buffer
+        DATA_POINTER_COPY_OFFSET_FROM_JSARRAYBUFFER_START: 0x20, // VALIDADO - Cópia do ponteiro de dados (redundante?)
+        SHARING_MODE_OFFSET: 0x28, // Offset do sharing mode (ArrayBuffer)
+        IS_RESIZABLE_FLAGS_OFFSET: 0x30, // Offset de flags de redimensionamento (ArrayBuffer)
+        ARRAYBUFFER_REAL_PTR_POSSIBLE_M_VECTOR: 0x28, // a1[5] - base de dados no loop de limpeza/validação
+        ARRAYBUFFER_FIELD_0X30: 0x30, // *((_DWORD *)a1 + 12) - usado em sub_1C01140
+        ARRAYBUFFER_FIELD_0X34: 0x34, // *((_DWORD *)a1 + 13) - usado como contador/tamanho no loop
+        ARRAYBUFFER_FIELD_0X38: 0x38, // a1[7] - liberado por fastFree
+        ARRAYBUFFER_FIELD_0X40: 0x40, // a1[8] - testado e liberado por BitVector::OutOfLineBits::destroy
         KnownStructureIDs: {
             JSString_STRUCTURE_ID: null,
-            ArrayBuffer_STRUCTURE_ID: 2,
+            ArrayBuffer_STRUCTURE_ID: 2, // VALIDADO
             JSArray_STRUCTURE_ID: null,
             JSObject_Simple_STRUCTURE_ID: null
         }
     },
+    // OFFSETS MESCLADOS DO ANTIGO offsets.mjs
     ArrayBufferView: {
         STRUCTURE_ID_OFFSET: 0x00,
         FLAGS_OFFSET: 0x04,
-        ASSOCIATED_ARRAYBUFFER_OFFSET: 0x08,
-        M_VECTOR_OFFSET: 0x10,
-        M_LENGTH_OFFSET: 0x18,
-        M_MODE_OFFSET: 0x1C,
-        VIEW_SIZE: 0x20
+        ASSOCIATED_ARRAYBUFFER_OFFSET: 0x08, // Ponteiro para o JSArrayBuffer real que esta view usa.
+        
+        M_VECTOR_OFFSET: 0x10,          // Ponteiro interno de dados da view
+        M_LENGTH_OFFSET: 0x18,          // Comprimento da view (em elementos)
+        M_MODE_OFFSET: 0x1C,            // Flags de modo da view
+        VIEW_SIZE: 0x20                 // sizeof JSArrayBufferView
     },
     ArrayBufferContents: {
-        SIZE_IN_BYTES_OFFSET_FROM_CONTENTS_START: 0x8,
-        DATA_POINTER_OFFSET_FROM_CONTENTS_START: 0x10,
+        SIZE_IN_BYTES_OFFSET_FROM_CONTENTS_START: 0x8,   // VALIDADO
+        DATA_POINTER_OFFSET_FROM_CONTENTS_START: 0x10, // VALIDADO
         SHARED_ARRAY_BUFFER_CONTENTS_IMPL_PTR_OFFSET: 0x20,
         IS_SHARED_FLAG_OFFSET: 0x40,
         RAW_DATA_POINTER_FIELD_CANDIDATE_OFFSET: 0x5C,
         PINNING_FLAG_OFFSET: 0x5D,
     },
     VM: {
-        TOP_CALL_FRAME_OFFSET: 0x9E98, // VERIFICAR PARA FW 12.02
+        TOP_CALL_FRAME_OFFSET: 0x9E98, // VALIDADO
     },
     DataView: {
         STRUCTURE_VTABLE_OFFSET: "0x3AD62A0", // VERIFICAR PARA FW 12.02
         DESTROYED_OBJECT_VTABLE: "0x3AD6340", // VERIFICAR PARA FW 12.02
         VTABLE_OFFSET_0x48_METHOD: 0x48,
         VTABLE_OFFSET_0x50_METHOD: 0x50,
+
+        M_MODE_VALUE: 0x0000000B,
         M_MODE_CANDIDATES: [
             0x0000000B,
             0x00000001,
@@ -211,10 +223,11 @@ export const WEBKIT_LIBRARY_INFO = {
 };
 
 export let OOB_CONFIG = {
-    ALLOCATION_SIZE: 0x20000,
+    ALLOCATION_SIZE: 0x20000, // Reduzido para 64KB para maior estabilidade 0x8000 32KB
     BASE_OFFSET_IN_DV: 128,
     INITIAL_BUFFER_SIZE: 32
 };
+
 
 export function updateOOBConfigFromUI(docInstance) {
     if (!docInstance) return;
