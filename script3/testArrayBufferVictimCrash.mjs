@@ -71,8 +71,8 @@ export async function testAndStabilizeCorePrimitives(logFn, pauseFn) {
         const SPRAY_CONFIG = {
             ATTEMPTS: 300,        // Número de tentativas para estabilizar.
             GC_INTERVAL: 10,      // Forçar Garbage Collection a cada X tentativas.
-            SPRAY_COUNT: 100,     // Número de objetos de lixo para alocar em cada tentativa.
-            OBJECT_SIZE_MIN: 32,
+            SPRAY_COUNT: 500,     // Número de objetos de lixo para alocar em cada tentativa.
+            OBJECT_SIZE_MIN: 16,
             OBJECT_SIZE_MAX: 128
         };
 
