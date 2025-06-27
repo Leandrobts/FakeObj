@@ -1,18 +1,14 @@
-// main.mjs (Atualizado para o novo sistema de teste)
+// main.mjs (ATUALIZADO COM LÓGICA DE BOTÕES SEPARADA)
 
 import {
     executeExploitChain,
-    testAndStabilizeCorePrimitives, // IMPORTADA NOVA FUNÇÃO DE TESTE
-    FNAME_MODULE
+    testAndStabilizeCorePrimitives
 } from './script3/testArrayBufferVictimCrash.mjs';
-// Apenas importar setLogFunction e toHex de utils.mjs, pois log é declarado localmente.
-import { setLogFunction, toHex } from './module/utils.mjs';
-import { Int } from './module/int64.mjs';
-
+import { setLogFunction } from './module/utils.mjs';
+import { JSC_OFFSETS, OFFSET_TEST_CASES } from './config.mjs';
 
 // --- Local DOM Elements Management ---
 const elementsCache = {};
-
 function getElementById(id) {
     if (elementsCache[id] && document.body.contains(elementsCache[id])) {
         return elementsCache[id];
@@ -26,8 +22,6 @@ function getElementById(id) {
 
 // --- Local Logging Functionality ---
 const outputDivId = 'output-advanced';
-
-// Esta é a declaração principal da função log
 export const log = (message, type = 'info', funcName = '') => {
     const outputDiv = getElementById(outputDivId);
     if (!outputDiv) {
@@ -54,103 +48,89 @@ export const log = (message, type = 'info', funcName = '') => {
 };
 
 // --- Local Pause Functionality ---
-const SHORT_PAUSE = 50;
-const MEDIUM_PAUSE = 500;
-const LONG_PAUSE = 1000;
-
-const PAUSE = async (ms = SHORT_PAUSE) => {
+const PAUSE = async (ms = 50) => {
     return new Promise(resolve => setTimeout(resolve, ms));
 };
 
-// --- JIT Behavior Test ---
-async function testJITBehavior() {
-    log("--- Iniciando Teste de Comportamento do JIT ---", 'test', 'testJITBehavior');
-    let test_buf = new ArrayBuffer(16);
-    let float_view = new Float64Array(test_buf);
-    let uint32_view = new Uint32Array(test_buf);
-    let some_obj = { a: 1, b: 2 };
-
-    log("Escrevendo um objeto em um Float64Array...", 'info', 'testJITBehavior');
-    float_view[0] = some_obj;
-
-    const low = uint32_view[0];
-    const high = uint32_view[1];
-    const leaked_val = new Int(low, high);
-
-    log(`Bits lidos: high=0x${high.toString(16)}, low=0x${low.toString(16)} (Valor completo: ${leaked_val.toString(true)})`, 'leak', 'testJITBehavior');
-
-    if (high === 0x7ff80000 && low === 0) {
-        log("CONFIRMADO: O JIT converteu o objeto para NaN, como esperado.", 'good', 'testJITBehavior');
-    } else {
-        log("INESPERADO: O JIT não converteu para NaN. O comportamento é diferente do esperado.", 'warn', 'testJITBehavior');
-    }
-    log("--- Teste de Comportamento do JIT Concluído ---", 'test', 'testJITBehavior');
-}
-
-
 // --- Initialization Logic ---
 function initializeAndRunTest() {
-    const runBtn = getElementById('runIsolatedTestBtn');
-    const stabilizationBtn = getElementById('runStabilizationTestBtn'); // NOVO BOTÃO
+    const fullChainBtn = getElementById('runFullChainBtn');
+    const primitivesTestBtn = getElementById('runPrimitivesTestBtn');
+    const selector = getElementById('testCaseSelector');
     const outputDiv = getElementById('output-advanced');
 
     setLogFunction(log);
 
-    if (!outputDiv) {
-        console.error("DIV 'output-advanced' not found. Log will not be displayed on the page.");
-    }
-
-    if (runBtn) {
-        runBtn.addEventListener('click', async () => {
-            if (runBtn.disabled || stabilizationBtn.disabled) return;
-            runBtn.disabled = true;
-            stabilizationBtn.disabled = true;
-
-            if (outputDiv) outputDiv.innerHTML = '';
-            console.log("Starting full exploit chain");
-
-            try {
-                await testJITBehavior();
-                await PAUSE(MEDIUM_PAUSE);
-                await executeExploitChain(log, PAUSE);
-            } catch (e) {
-                console.error("Critical error during full exploit execution:", e);
-                log(`[CRITICAL TEST ERROR] ${String(e.message).replace(/</g, "&lt;").replace(/>/g, "&gt;")}\n`, 'critical');
-            } finally {
-                console.log("Full exploit chain concluded.");
-                log("Full exploit chain finished.\n", 'test');
-                runBtn.disabled = false;
-                stabilizationBtn.disabled = false;
-            }
+    // Popula o dropdown com os casos de teste do config.mjs
+    if (selector) {
+        OFFSET_TEST_CASES.forEach((testCase, index) => {
+            const option = document.createElement('option');
+            option.value = index;
+            option.textContent = testCase.name;
+            selector.appendChild(option);
         });
-    } else {
-        console.error("Button 'runIsolatedTestBtn' not found.");
     }
 
-    // LÓGICA PARA O NOVO BOTÃO DE TESTE DE ESTABILIZAÇÃO
-    if (stabilizationBtn) {
-        stabilizationBtn.addEventListener('click', async () => {
-            if (runBtn.disabled || stabilizationBtn.disabled) return;
-            runBtn.disabled = true;
-            stabilizationBtn.disabled = true;
+    // Listener para o botão de teste de primitivas (DEBUG)
+    if (primitivesTestBtn) {
+        primitivesTestBtn.addEventListener('click', async () => {
+            if (fullChainBtn.disabled || primitivesTestBtn.disabled) return;
+            fullChainBtn.disabled = true;
+            primitivesTestBtn.disabled = true;
 
             if (outputDiv) outputDiv.innerHTML = '';
-            console.log("Starting core primitive stabilization test");
+            
+            const selectedIndex = selector.value;
+            const selectedTestCase = OFFSET_TEST_CASES[selectedIndex];
+            
+            log(`--- Iniciando teste de primitivas para: "${selectedTestCase.name}" ---`, 'test');
+            log(`Aplicando offsets: BUTTERFLY_OFFSET=0x${selectedTestCase.offsets.BUTTERFLY_OFFSET.toString(16)}, INLINE_PROPERTIES_OFFSET=0x${selectedTestCase.offsets.INLINE_PROPERTIES_OFFSET.toString(16)}`, 'info');
 
+            // Aplica dinamicamente os offsets selecionados
+            Object.assign(JSC_OFFSETS.JSObject, selectedTestCase.offsets);
+            
             try {
                 await testAndStabilizeCorePrimitives(log, PAUSE);
             } catch (e) {
-                console.error("Critical error during stabilization test:", e);
-                log(`[CRITICAL STABILIZATION ERROR] ${String(e.message).replace(/</g, "&lt;").replace(/>/g, "&gt;")}\n`, 'critical');
+                console.error("Critical error during primitives test:", e);
+                log(`[CRITICAL DEBUG ERROR] ${String(e.message).replace(/</g, "&lt;").replace(/>/g, "&gt;")}\n`, 'critical');
             } finally {
-                console.log("Stabilization test concluded.");
-                log("Stabilization test finished.\n", 'test');
-                runBtn.disabled = false;
-                stabilizationBtn.disabled = false;
+                log(`--- Teste de primitivas para "${selectedTestCase.name}" concluído. ---`, 'test');
+                fullChainBtn.disabled = false;
+                primitivesTestBtn.disabled = false;
             }
         });
     } else {
-        console.error("Button 'runStabilizationTestBtn' not found.");
+        console.error("Button 'runPrimitivesTestBtn' not found.");
+    }
+
+    // Listener para o botão da cadeia de exploit completa (PRINCIPAL)
+    if (fullChainBtn) {
+        fullChainBtn.addEventListener('click', async () => {
+            if (fullChainBtn.disabled || primitivesTestBtn.disabled) return;
+            fullChainBtn.disabled = true;
+            primitivesTestBtn.disabled = true;
+
+            if (outputDiv) outputDiv.innerHTML = '';
+
+            // Usa a primeira configuração de offsets como padrão para a cadeia principal
+            const defaultTestCase = OFFSET_TEST_CASES[0];
+            log(`--- Iniciando cadeia de exploit completa com offsets padrão: "${defaultTestCase.name}" ---`, 'test');
+            Object.assign(JSC_OFFSETS.JSObject, defaultTestCase.offsets);
+            
+            try {
+                await executeExploitChain(log, PAUSE);
+            } catch (e) {
+                console.error("Critical error during full chain execution:", e);
+                log(`[CRITICAL CHAIN ERROR] ${String(e.message).replace(/</g, "&lt;").replace(/>/g, "&gt;")}\n`, 'critical');
+            } finally {
+                log(`--- Cadeia de exploit completa finalizada. ---`, 'test');
+                fullChainBtn.disabled = false;
+                primitivesTestBtn.disabled = false;
+            }
+        });
+    } else {
+        console.error("Button 'runFullChainBtn' not found.");
     }
 }
 
