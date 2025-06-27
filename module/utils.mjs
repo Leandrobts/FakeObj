@@ -1,203 +1,194 @@
-//module/utils.mjs
+// js/utils.mjs
 
-import { Int } from './int64.mjs'; // Importa Int para manipulação de 64 bits
+export const KB = 1024;
+export const MB = KB * KB;
+export const GB = KB * KB * KB;
 
-// Classe de erro customizada para "die" (parada fatal com mensagem).
-export class DieError extends Error {
-    constructor(...args) {
-        super(...args);
-        this.name = this.constructor.name; // Define o nome do erro.
+export class AdvancedInt64 {
+    constructor(low, high) {
+        this._isAdvancedInt64 = true;
+        let buffer = new Uint32Array(2);
+
+        let is_one_arg = false;
+        if (arguments.length === 1) { is_one_arg = true; }
+        if (arguments.length === 0) {
+            low = 0; high = 0; is_one_arg = false;
+        }
+
+        const check_range = (x) => Number.isInteger(x) && x >= 0 && x <= 0xFFFFFFFF;
+
+        if (is_one_arg) {
+            if (typeof (low) === 'number') {
+                if (!Number.isFinite(low)) {
+                    throw new TypeError("Single number argument for AdvancedInt64 must be a finite number.");
+                }
+                buffer[0] = low >>> 0;
+                buffer[1] = (low / (0xFFFFFFFF + 1)) >>> 0;
+            } else if (typeof (low) === 'string') {
+                let str = low;
+                if (str.startsWith('0x')) { str = str.slice(2); }
+
+                if (str.length > 16) { throw RangeError('AdvancedInt64 string input too long'); }
+                str = str.padStart(16, '0');
+
+                const highStr = str.substring(0, 8);
+                const lowStr = str.substring(8, 16);
+
+                buffer[1] = parseInt(highStr, 16);
+                buffer[0] = parseInt(lowStr, 16);
+
+            } else if (low instanceof AdvancedInt64) {
+                 buffer[0] = low.low();
+                 buffer[1] = low.high();
+            } else {
+                throw TypeError('single arg must be number, hex string or AdvancedInt64');
+            }
+        } else { // two args
+            if (!check_range(low) || !check_range(high)) {
+                throw RangeError('low/high must be uint32 numbers');
+            }
+            buffer[0] = low;
+            buffer[1] = high;
+        }
+        this.buffer = buffer;
+    }
+
+    low() { return this.buffer[0]; }
+    high() { return this.buffer[1]; }
+
+    equals(other) {
+        if (!isAdvancedInt64Object(other)) { return false; }
+        return this.low() === other.low() && this.high() === other.high();
+    }
+
+    lessThanOrEqual(other) {
+        if (!isAdvancedInt64Object(other)) {
+            throw new TypeError("Comparison target must be an AdvancedInt64 object.");
+        }
+        if (this.high() < other.high()) {
+            return true;
+        }
+        if (this.high() === other.high()) {
+            return this.low() <= other.low();
+        }
+        return false;
+    }
+
+    greaterThanOrEqual(other) {
+        if (!isAdvancedInt64Object(other)) {
+            throw new TypeError("Comparison target must be an AdvancedInt64 object.");
+        }
+        if (this.high() > other.high()) {
+            return true;
+        }
+        if (this.high() === other.high()) {
+            return this.low() >= other.low();
+        }
+        return false;
+    }
+
+    lessThan(other) {
+        if (!isAdvancedInt64Object(other)) {
+            throw new TypeError("Comparison target must be an AdvancedInt64 object.");
+        }
+        if (this.high() < other.high()) {
+            return true;
+        }
+        if (this.high() === other.high()) {
+            return this.low() < other.low();
+        }
+        return false;
+    }
+
+    static Zero = new AdvancedInt64(0,0);
+    static NaNValue = new AdvancedInt64(0, 0x7ff80000);
+
+    toString(hex = false) {
+        if (!hex) {
+            if (this.high() === 0) return String(this.low());
+            return `(H:0x${this.high().toString(16)}, L:0x${this.low().toString(16)})`;
+        }
+        return '0x' + this.high().toString(16).padStart(8, '0') + '_' + this.low().toString(16).padStart(8, '0');
+    }
+
+    toNumber() {
+        return this.high() * (0xFFFFFFFF + 1) + this.low();
+    }
+
+    add(val) {
+        let otherInt64;
+        if (!isAdvancedInt64Object(val)) {
+            if (typeof val === 'number' && Number.isFinite(val)) {
+                otherInt64 = new AdvancedInt64(val);
+            } else {
+                throw TypeError(`Argument for add must be a finite number or AdvancedInt64. Got: ${typeof val} ${val}`);
+            }
+        } else {
+            otherInt64 = val;
+        }
+
+        let low = this.low() + otherInt64.low();
+        let high = this.high() + otherInt64.high();
+
+        if (low > 0xFFFFFFFF) {
+            high += Math.floor(low / (0xFFFFFFFF + 1));
+            low = low & 0xFFFFFFFF;
+        }
+
+        return new AdvancedInt64(low >>> 0, high >>> 0);
+    }
+
+    sub(val) {
+        let otherInt64;
+        if (!isAdvancedInt64Object(val)) {
+            if (typeof val === 'number' && Number.isFinite(val)) {
+                otherInt64 = new AdvancedInt64(val);
+            } else {
+                throw TypeError(`Argument for sub must be a finite number or AdvancedInt64. Got: ${typeof val} ${val}`);
+            }
+        } else {
+            otherInt64 = val;
+        }
+
+        let newLow = this.low() - otherInt64.low();
+        let newHigh = this.high() - otherInt64.high();
+
+        if (newLow < 0) {
+            newLow += (0xFFFFFFFF + 1);
+            newHigh -= 1;
+        }
+
+        return new AdvancedInt64(newLow >>> 0, newHigh >>> 0);
     }
 }
 
-// Lança um erro fatal com uma mensagem.
-export function die(msg = '') {
-    throw new DieError(msg);
+
+export function isAdvancedInt64Object(obj) {
+    return obj && obj._isAdvancedInt64 === true;
 }
 
-// Acessa o elemento 'console' do DOM para logs.
-const console = document.getElementById('output-advanced'); // Usando 'output-advanced' conforme seu main.mjs
+export const PAUSE = async (ms) => {
+    return new Promise(resolve => setTimeout(resolve, ms));
+};
 
-// Função de log adaptada para usar o elemento DOM ou fallback.
-let _globalLogFunction = console.append; // Default para o método append do elemento.
+// Global reference for the log function, to be set by the main orchestrator
+let _globalLogFunction = console.log; // Default to console.log
 
 export function setLogFunction(fn) {
-    _globalLogFunction = fn; // Permite definir uma função de log externa.
+    _globalLogFunction = fn;
 }
 
 export function log(message, type = 'info', funcName = '') {
     if (_globalLogFunction) {
-        // Formato original do seu log em main.mjs
-        const outputDiv = document.getElementById('output-advanced'); // Re-obtem o elemento para garantir
-        if (outputDiv) {
-            const timestamp = `[${new Date().toLocaleTimeString()}]`;
-            const prefix = funcName ? `[${funcName}] ` : '';
-            const sanitizedMessage = String(message).replace(/</g, "&lt;").replace(/>/g, "&gt;");
-            const logClass = ['info', 'test', 'subtest', 'vuln', 'good', 'warn', 'error', 'leak', 'ptr', 'critical', 'escalation', 'tool', 'debug'].includes(type) ? type : 'info';
-
-            if (outputDiv.innerHTML.length > 600000) {
-                const lastPart = outputDiv.innerHTML.substring(outputDiv.innerHTML.length - 300000);
-                outputDiv.innerHTML = `<span class="log-info">[${new Date().toLocaleTimeString()}] [Log Truncado...]</span>\n` + lastPart;
-            }
-            outputDiv.innerHTML += `<span class="log-${logClass}">${timestamp} ${prefix}${sanitizedMessage}\n</span>`;
-            outputDiv.scrollTop = outputDiv.scrollHeight;
-        } else {
-            console.log(`[LOG_UNSET] ${message}`); // Fallback se o elemento não for encontrado.
-        }
+        _globalLogFunction(message, type, funcName);
     } else {
-        console.log(`[LOG_UNSET] ${message}`); // Fallback se a função de log não estiver definida.
+        console.log(`[LOG_UNSET] ${message}`);
     }
 }
 
 
-export function clear_log() {
-    // Limpa o conteúdo do console no DOM.
-    if (document.getElementById('output-advanced')) {
-        document.getElementById('output-advanced').innerHTML = '';
-    } else {
-        console.log("Output div not found to clear log.");
-    }
-}
-
-// Alinha um endereço a um determinado alinhamento (potência de 2).
-export function align(a, alignment) {
-    if (!(a instanceof Int)) { // Converte para Int se não for.
-        a = new Int(a);
-    }
-    const mask = -alignment & 0xffffffff; // Máscara para alinhamento.
-    let type = a.constructor; // Mantém o tipo original (Int ou Addr).
-    let low = a.lo & mask; // Alinha a parte low.
-    return new type(low, a.hi); // Retorna um novo objeto com o endereço alinhado.
-}
-
-// Envia um buffer como um arquivo para uma URL.
-export async function send(url, buffer, file_name, onload = () => {}) {
-    const file = new File(
-        [buffer],
-        file_name,
-        { type: 'application/octet-stream' }
-    );
-    const form = new FormData();
-    form.append('upload', file);
-
-    log('send');
-    const response = await fetch(url, { method: 'POST', body: form });
-
-    if (!response.ok) {
-        throw Error(`Network response was not OK, status: ${response.status}`);
-    }
-    onload();
-}
-
-// Pausa a execução por um determinado número de milissegundos.
-// Usado principalmente para ceder ao GC e permitir atualizações do DOM.
-export function sleep(ms = 0) {
-    return new Promise(resolve => setTimeout(resolve, ms));
-}
-
-// Converte um número para sua representação hexadecimal com prefixo '0x'.
-export function hex(number) {
-    return '0x' + number.toString(16);
-}
-
-// Converte um número para sua representação hexadecimal sem prefixo '0x'.
-export function hex_np(number) {
-    return number.toString(16);
-}
-
-// Gera um hexdump de um array de bytes.
-export function hexdump(view) {
-    const num_16 = view.length & ~15;
-    const residue = view.length - num_16;
-    const max_off_len = hex_np(((view.length + 7) & ~7) - 1).length;
-
-    function chr(i) {
-        if (0x20 <= i && i <= 0x7e) {
-            return String.fromCodePoint(i);
-        }
-        return '.';
-    }
-
-    function to_hex(view, offset, length) {
-        return (
-            [...view.slice(offset, offset + length)]
-            .map(e => hex_np(e).padStart(2, '0'))
-            .join(' ')
-        );
-    }
-
-    let bytes = [];
-    for (let i = 0; i < num_16; i += 16) {
-        const long1 = to_hex(view, i, 8);
-        const long2 = to_hex(view, i + 8, 8);
-
-        let print = '';
-        for (let j = 0; j < 16; j++) {
-            print += chr(view[j]);
-        }
-
-        bytes.push([`${long1}  ${long2}`, print]);
-    }
-
-    if (residue) {
-        const small = residue <= 8;
-        const long1_len = small ? residue : 8;
-
-        let long1 = to_hex(view, num_16, long1_len);
-        if (small) {
-            for (let i = 0; i < 8 - residue; i++) {
-                long1 += ' xx';
-            }
-        }
-
-        const long2 = (() => {
-            if (small) {
-                return Array(8).fill('xx').join(' ');
-            }
-
-            let res = to_hex(view, num_16 + 8, residue - 8);
-            for (let i = 0; i < 16 - residue; i++) {
-                res += ' xx';
-            }
-
-            return res;
-        })();
-
-        let print = '';
-        for (let i = 0; i < residue; i++) {
-            print += chr(view[num_16 + i]);
-        }
-        for (let i = 0; i < 16 - residue; i++) {
-            print += ' ';
-        }
-
-        bytes.push([`${long1}  ${long2}`, print]);
-    }
-
-    for (const [pos, [val, print]] of bytes.entries()) {
-        const off = hex_np(pos * 16).padStart(max_off_len, '0');
-        log(`${off} | ${val} |${print}|`);
-    }
-}
-
-// Converte um buffer de bytes para uma string JavaScript.
-export function jstr(buffer) {
-    let res = '';
-    for (const item of buffer) {
-        if (item === 0) { // Para no primeiro byte nulo.
-            break;
-        }
-        res += String.fromCodePoint(item);
-    }
-    return String(res); // Converte para string primitiva.
-}
-
-
-// --- Funções de log do seu exploit original (mantidas e adaptadas para o novo sistema) ---
-
-// Esta função agora é basicamente um wrapper para a nova função 'log' do PSFree.
-export const toHex = (val, bits = 32) => {
-    if (val && val._isAdvancedInt64 === true) { // Se for seu AdvancedInt64
+export function toHex(val, bits = 32) {
+    if (isAdvancedInt64Object(val)) {
         return val.toString(true);
     }
     if (typeof val !== 'number') {
@@ -224,7 +215,7 @@ export const toHex = (val, bits = 32) => {
 
     const numChars = Math.ceil(bits / 4);
     return '0x' + hexStr.padStart(numChars, '0');
-};
+}
 
 export function stringToAdvancedInt64Array(str, nullTerminate = true) {
     if (typeof str !== 'string') {
@@ -264,7 +255,7 @@ export function advancedInt64ArrayToString(arr) {
     if (!Array.isArray(arr)) return "InputIsNotArray";
 
     for (const adv64 of arr) {
-        if (!adv64 || !adv64._isAdvancedInt64) continue; // Verifica se é um AdvancedInt64 válido
+        if (!isAdvancedInt64Object(adv64)) continue;
 
         const low = adv64.low();
         const high = adv64.high();
