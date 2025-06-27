@@ -2,7 +2,8 @@ import {
     executeTypedArrayVictimAddrofAndWebKitLeak_R43,
     FNAME_MODULE
 } from './script3/testArrayBufferVictimCrash.mjs';
-import { AdvancedInt64, setLogFunction, toHex, isAdvancedInt64Object } from './module/utils.mjs'; // Caminho alterado
+import { AdvancedInt64, setLogFunction, toHex, isAdvancedInt64Object } from './module/utils.mjs';
+import { JSC_OFFSETS } from './config.mjs'; // <--- LINHA ADICIONADA/CORRIGIDA AQUI
 
 // --- Local DOM Elements Management ---
 const elementsCache = {};
@@ -109,7 +110,8 @@ function initializeAndRunTest() {
                 await testJITBehavior();
                 await PAUSE(MEDIUM_PAUSE); // Pause to read JIT test log
 
-                await executeTypedArrayVictimAddrofAndWebKitLeak_R43(log, PAUSE, JSC_OFFSETS);
+                // Agora JSC_OFFSETS será passado corretamente.
+                await executeTypedArrayVictimAddrofAndWebKitLeak_R43(log, PAUSE, JSC_OFFSETS); 
             } catch (e) {
                 console.error("Critical error during isolated test execution:", e);
                 log(`[CRITICAL TEST ERROR] ${String(e.message).replace(/</g, "&lt;").replace(/>/g, "&gt;")}\n`, 'critical');
