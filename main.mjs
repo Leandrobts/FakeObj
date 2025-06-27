@@ -6,7 +6,7 @@ import {
 } from './script3/testArrayBufferVictimCrash.mjs';
 // Remover AdvancedInt64 e isAdvancedInt64Object da importação
 // Apenas importar setLogFunction e toHex de utils.mjs, pois log é declarado localmente.
-import { setLogFunction, toHex } from './module/utils.mjs'; // REMOVIDO 'log' da importação
+import { setLogFunction, toHex } from './utils.mjs'; // REMOVIDO 'log' da importação
 import { Int } from './module/int64.mjs'; // Importar Int do PSFree
 
 
