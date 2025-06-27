@@ -2,36 +2,47 @@
 <html>
 <head>
     <meta charset="UTF-8">
-    <title>Webkit Exploit</title>
+    <title>Webkit Exploit Tester</title>
     <style>
         body { background: #111; color: #eee; font-family: monospace; padding: 15px; font-size: 14px; }
-        #output-advanced { /* ID usado por logS3 */
+        #output-advanced {
             background: #222;
             border: 1px solid #444;
             padding: 10px;
-            height: 75vh;
+            height: 70vh;
             overflow-y: auto;
             white-space: pre-wrap;
             margin-top: 10px;
         }
-        button { margin: 5px; padding: 10px; }
-        /* Estilos básicos de log para melhor visualização */
-        .log-info { color: #6cf; } .log-test { color: #fff; font-weight: bold; margin-top: 10px; display: block; border-top: 1px dashed #555; padding-top: 5px; }
-        .log-vuln { color: #ff4444; font-weight: bold; } .log-good { color: #4CAF50; }
-        .log-warn { color: #FFC107; } .log-error { color: #f44336; } .log-critical { color: #f0f; font-weight: bold; }
+        .controls-container { border: 1px solid #333; padding: 10px; margin-bottom: 10px; }
+        .controls { display: flex; align-items: center; margin-top: 5px; }
+        .controls > * { margin: 5px; padding: 10px; font-size: 14px; }
+        h2 { margin-top: 0; }
+        /* ... (outros estilos de log mantidos) ... */
     </style>
 </head>
 <body>
-    <h1>ASLR Bypass</h1>
+    <h1>WebKit Exploit - Ferramenta de Teste</h1>
     <p>User Agent: <span id="userAgentDisplay">Detecting...</span></p>
-    <button id="runIsolatedTestBtn">Start Full Exploit Chain</button>
-    <button id="runStabilizationTestBtn">Test Core Primitives (Debug)</button>
+    
+    <div class="controls-container">
+        <h2>Teste Principal</h2>
+        <button id="runFullChainBtn">Rodar Cadeia de Exploit Completa</button>
+    </div>
+
+    <div class="controls-container">
+        <h2>Depuração de Primitivas</h2>
+        <div class="controls">
+            <label for="testCaseSelector">Selecionar Offsets para Testar:</label>
+            <select id="testCaseSelector"></select>
+            <button id="runPrimitivesTestBtn">Testar Apenas Primitivas</button>
+        </div>
+    </div>
 
     <div id="output-advanced"></div>
 
     <script type="module" src="main.mjs"></script>
     <script>
-        // Script para exibir o User Agent
         document.addEventListener('DOMContentLoaded', () => {
             const userAgentSpan = document.getElementById('userAgentDisplay');
             if (userAgentSpan) {
