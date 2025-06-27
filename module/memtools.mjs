@@ -4,7 +4,7 @@
 
 import { Int } from './int64.mjs'; // Importa Int para manipulação de inteiros de 64 bits
 import { mem } from './mem.mjs'; // Importa a instância global de Memory
-import { align } from './utils.mjs'; // Importa a função align de utils.mjs
+import { align } from '../utils.mjs'; // Importa a função align de utils.mjs
 import { JSC_OFFSETS } from '../config.mjs'; // ADICIONADO: Importa do config consolidado
 import { BufferView } from './rw.mjs'; // Importa BufferView para manipulação de buffers
 import { View1 } from './view.mjs'; // Importa View1 para manipulação de arrays de 8 bits
