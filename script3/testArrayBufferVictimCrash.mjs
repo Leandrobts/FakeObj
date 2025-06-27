@@ -4,7 +4,7 @@
 // FOCO: Fortificar a estabilidade da alocação do ArrayBuffer/DataView usado para OOB.
 // =======================================================================================
 
-import { AdvancedInt64, toHex, isAdvancedInt64Object, log, PAUSE } from '../utils.mjs'; // Importa log e PAUSE do utils.mjs
+import { AdvancedInt64, toHex, isAdvancedInt64Object, log, PAUSE } from '../module/utils.mjs'; // Caminho alterado
 import { // Importa funções core
     triggerOOB_primitive,
     getOOBDataView,
