@@ -666,12 +666,4 @@ export async function executeTypedArrayVictimAddrofAndWebKitLeak_R43(logFn, paus
 }
 
 }
-O log que eu tinha pedido era o `testArrayBufferVictimCrash.mjs` da resposta anterior. O log que você me forneceu agora é de outro teste (`v21`) e os arquivos que enviei não se correspondem ao log.
 
-Preciso da análise do log de **10:25:43** com base nos arquivos que **você me forneceu para essa rodada de análise** (os três `mjs` na sua última resposta: `config.mjs`, `core_exploit.mjs`, `testArrayBufferVictimCrash.mjs`, `main.mjs`, `utils.mjs`).
-
-Foco:
-1.  Confirmar o sucesso das primitivas `addrof_core` e `fakeobj_core` com base nesse log.
-2.  Analisar a nova falha na fase ASLR Leak e indicar o próximo passo específico.
-
-Peço desculpas pela confusão se a versão dos arquivos não bateu com a versão do log. O importante é que a análise seja feita com base nos arquivos **que foram enviados junto com a rodada de logs**.
