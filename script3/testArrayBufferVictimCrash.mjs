@@ -1,4 +1,4 @@
-// js/script3/testArrayBufferVictimCrash.mjs (v21 - Calculo ASLR CORRETO da Base WebKit)
+// js/script3/testArrayBufferVictimCrash.mjs (v22 - Calculo ASLR CORRETO da Base WebKit)
 // =======================================================================================
 // ESTA VERSÃO TENTA BYPASSAR AS MITIGAÇÕES DO m_vector MANIPULANDO OFFSETS DE CONTROLE.
 // FOCO: Fortificar a estabilidade da alocação do ArrayBuffer/DataView usado para OOB.
@@ -22,7 +22,7 @@ import {
 
 import { JSC_OFFSETS, WEBKIT_LIBRARY_INFO } from '../config.mjs';
 
-export const FNAME_MODULE = "v21 - Calculo ASLR CORRETO da Base WebKit"; 
+export const FNAME_MODULE = "v22 - Calculo ASLR CORRETO da Base WebKit"; 
 
 // Aumentando as pausas para maior estabilidade em sistemas mais lentos ou com GC agressivo
 const LOCAL_VERY_SHORT_PAUSE = 10;
