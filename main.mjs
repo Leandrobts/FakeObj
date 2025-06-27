@@ -1,14 +1,18 @@
-// main.mjs (ATUALIZADO COM LÓGICA DE BOTÕES SEPARADA)
+// main.mjs (Atualizado para o novo sistema)
 
 import {
     executeExploitChain,
-    testAndStabilizeCorePrimitives
+    FNAME_MODULE
 } from './script3/testArrayBufferVictimCrash.mjs';
-import { setLogFunction } from './module/utils.mjs';
-import { JSC_OFFSETS, OFFSET_TEST_CASES } from './config.mjs';
+// Remover AdvancedInt64 e isAdvancedInt64Object da importação
+// Apenas importar setLogFunction e toHex de utils.mjs, pois log é declarado localmente.
+import { setLogFunction, toHex } from './module/utils.mjs'; // REMOVIDO 'log' da importação
+import { Int } from './module/int64.mjs'; // Importar Int do PSFree
+
 
 // --- Local DOM Elements Management ---
 const elementsCache = {};
+
 function getElementById(id) {
     if (elementsCache[id] && document.body.contains(elementsCache[id])) {
         return elementsCache[id];
@@ -22,7 +26,9 @@ function getElementById(id) {
 
 // --- Local Logging Functionality ---
 const outputDivId = 'output-advanced';
-export const log = (message, type = 'info', funcName = '') => {
+
+// Esta é a declaração principal da função log
+export const log = (message, type = 'info', funcName = '') => { //
     const outputDiv = getElementById(outputDivId);
     if (!outputDiv) {
         console.error(`Log target div "${outputDivId}" not found. Message: ${message}`);
@@ -48,89 +54,85 @@ export const log = (message, type = 'info', funcName = '') => {
 };
 
 // --- Local Pause Functionality ---
-const PAUSE = async (ms = 50) => {
+const SHORT_PAUSE = 50;
+const MEDIUM_PAUSE = 500;
+const LONG_PAUSE = 1000;
+
+const PAUSE = async (ms = SHORT_PAUSE) => {
     return new Promise(resolve => setTimeout(resolve, ms));
 };
 
+// --- JIT Behavior Test ---
+async function testJITBehavior() {
+    log("--- Iniciando Teste de Comportamento do JIT ---", 'test', 'testJITBehavior');
+    let test_buf = new ArrayBuffer(16);
+    let float_view = new Float64Array(test_buf);
+    let uint32_view = new Uint32Array(test_buf);
+    let some_obj = { a: 1, b: 2 };
+
+    log("Escrevendo um objeto em um Float64Array...", 'info', 'testJITBehavior');
+    float_view[0] = some_obj;
+
+    const low = uint32_view[0];
+    const high = uint32_view[1];
+    // Agora, usamos a classe Int do PSFree para representar o valor de 64 bits
+    const leaked_val = new Int(low, high);
+
+    log(`Bits lidos: high=0x${high.toString(16)}, low=0x${low.toString(16)} (Valor completo: ${leaked_val.toString(true)})`, 'leak', 'testJITBehavior');
+
+    // A comparação ainda funciona com os valores numéricos brutos
+    if (high === 0x7ff80000 && low === 0) {
+        log("CONFIRMADO: O JIT converteu o objeto para NaN, como esperado.", 'good', 'testJITBehavior');
+    } else {
+        log("INESPERADO: O JIT não converteu para NaN. O comportamento é diferente do esperado.", 'warn', 'testJITBehavior');
+    }
+    log("--- Teste de Comportamento do JIT Concluído ---", 'test', 'testJITBehavior');
+}
+
+
 // --- Initialization Logic ---
 function initializeAndRunTest() {
-    const fullChainBtn = getElementById('runFullChainBtn');
-    const primitivesTestBtn = getElementById('runPrimitivesTestBtn');
-    const selector = getElementById('testCaseSelector');
+    const runBtn = getElementById('runIsolatedTestBtn');
     const outputDiv = getElementById('output-advanced');
 
-    setLogFunction(log);
+    // Set the log function in utils.mjs so core_exploit.mjs can use it
+    setLogFunction(log); // Usa a função de log do main.mjs
 
-    // Popula o dropdown com os casos de teste do config.mjs
-    if (selector) {
-        OFFSET_TEST_CASES.forEach((testCase, index) => {
-            const option = document.createElement('option');
-            option.value = index;
-            option.textContent = testCase.name;
-            selector.appendChild(option);
-        });
+    if (!outputDiv) {
+        console.error("DIV 'output-advanced' not found. Log will not be displayed on the page.");
     }
 
-    // Listener para o botão de teste de primitivas (DEBUG)
-    if (primitivesTestBtn) {
-        primitivesTestBtn.addEventListener('click', async () => {
-            if (fullChainBtn.disabled || primitivesTestBtn.disabled) return;
-            fullChainBtn.disabled = true;
-            primitivesTestBtn.disabled = true;
+    if (runBtn) {
+        runBtn.addEventListener('click', async () => {
+            if (runBtn.disabled) return;
+            runBtn.disabled = true;
 
-            if (outputDiv) outputDiv.innerHTML = '';
-            
-            const selectedIndex = selector.value;
-            const selectedTestCase = OFFSET_TEST_CASES[selectedIndex];
-            
-            log(`--- Iniciando teste de primitivas para: "${selectedTestCase.name}" ---`, 'test');
-            log(`Aplicando offsets: BUTTERFLY_OFFSET=0x${selectedTestCase.offsets.BUTTERFLY_OFFSET.toString(16)}, INLINE_PROPERTIES_OFFSET=0x${selectedTestCase.offsets.INLINE_PROPERTIES_OFFSET.toString(16)}`, 'info');
-
-            // Aplica dinamicamente os offsets selecionados
-            Object.assign(JSC_OFFSETS.JSObject, selectedTestCase.offsets);
-            
-            try {
-                await testAndStabilizeCorePrimitives(log, PAUSE);
-            } catch (e) {
-                console.error("Critical error during primitives test:", e);
-                log(`[CRITICAL DEBUG ERROR] ${String(e.message).replace(/</g, "&lt;").replace(/>/g, "&gt;")}\n`, 'critical');
-            } finally {
-                log(`--- Teste de primitivas para "${selectedTestCase.name}" concluído. ---`, 'test');
-                fullChainBtn.disabled = false;
-                primitivesTestBtn.disabled = false;
+            if (outputDiv) {
+                outputDiv.innerHTML = ''; // Clear previous logs
             }
-        });
-    } else {
-        console.error("Button 'runPrimitivesTestBtn' not found.");
-    }
+            console.log("Starting isolated test");
+           
 
-    // Listener para o botão da cadeia de exploit completa (PRINCIPAL)
-    if (fullChainBtn) {
-        fullChainBtn.addEventListener('click', async () => {
-            if (fullChainBtn.disabled || primitivesTestBtn.disabled) return;
-            fullChainBtn.disabled = true;
-            primitivesTestBtn.disabled = true;
-
-            if (outputDiv) outputDiv.innerHTML = '';
-
-            // Usa a primeira configuração de offsets como padrão para a cadeia principal
-            const defaultTestCase = OFFSET_TEST_CASES[0];
-            log(`--- Iniciando cadeia de exploit completa com offsets padrão: "${defaultTestCase.name}" ---`, 'test');
-            Object.assign(JSC_OFFSETS.JSObject, defaultTestCase.offsets);
-            
             try {
+                // Execute JIT test first
+                await testJITBehavior();
+                await PAUSE(MEDIUM_PAUSE); // Pause to read JIT test log
+
                 await executeExploitChain(log, PAUSE);
             } catch (e) {
-                console.error("Critical error during full chain execution:", e);
-                log(`[CRITICAL CHAIN ERROR] ${String(e.message).replace(/</g, "&lt;").replace(/>/g, "&gt;")}\n`, 'critical');
+                console.error("Critical error during isolated test execution:", e);
+                log(`[CRITICAL TEST ERROR] ${String(e.message).replace(/</g, "&lt;").replace(/>/g, "&gt;")}\n`, 'critical');
             } finally {
-                log(`--- Cadeia de exploit completa finalizada. ---`, 'test');
-                fullChainBtn.disabled = false;
-                primitivesTestBtn.disabled = false;
+                console.log("Isolated test concluded.");
+                log("Isolated test finished.\n", 'test');
+                runBtn.disabled = false;
+                if (document.title.includes(FNAME_MODULE) && !document.title.includes("SUCCESS") && !document.title.includes("Fail") && !document.title.includes("OK") && !document.title.includes("Confirmed")) {
+                    document.title = `${FNAME_MODULE}_Done`;
+                }
             }
         });
     } else {
-        console.error("Button 'runFullChainBtn' not found.");
+        console.error("Button 'runIsolatedTestBtn' not found.");
     }
 }
 
@@ -139,4 +141,5 @@ if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', initializeAndRunTest);
 } else {
     initializeAndRunTest();
+    
 }
