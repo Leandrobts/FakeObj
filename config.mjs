@@ -1,71 +1,4 @@
-// config.mjs (ATUALIZADO E CONSOLIDADO PARA FW 12.02)
-
-/* Copyright (C) 2023-2025 anonymous
-
-This file is part of PSFree.
-
-PSFree is free software: you can redistribute it and/or modify
-it under the terms of the GNU Affero General Public License as
-published by the Free Software Foundation, either version 3 of the
-License, or (at your option) any later version.
-
-PSFree is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-GNU Affero General Public License for more details.  */
-
-// webkitgtk 2.34.4 foi usado para desenvolver as partes portáteis do exploit
-// antes de migrar para ps4 8.03.
-// webkitgtk 2.34.4 foi construído com a variável cmake ENABLE_JIT=OFF,
-// que pode afetar o tamanho de SerializedScriptValue.
-// Este alvo não é mais suportado.
-
-// Formato do firmware alvo usado por PSFree:
-// 0xC_MM_mm
-// * C console - PS4 (0) ou PS5 (1) (1 bit)
-// * MM major version - parte inteira da versão do firmware (8 bits)
-// * mm minor version - parte fracionária da versão do firmware (8 bits)
-// Exemplos:
-// * PS4 10.00 -> C = 0 MM = 10 mm = 0 -> 0x0_10_00
-// * PS5 4.51 -> C = 1 MM = 4 mm = 51 -> 0x1_04_51
-
-// Verifica se o valor está no formato BCD (Binary Coded Decimal).
-// Assume inteiro e está no intervalo [0, 0xffff].
-function check_bcd(value) {
-    for (let i = 0; i <= 12; i += 4) {
-        const nibble = (value >>> i) & 0xf;
-
-        if (nibble > 9) {
-            return false;
-        }
-    }
-
-    return true;
-}
-
-export function set_target(value) {
-    if (!Number.isInteger(value)) {
-        throw TypeError(`value not an integer: ${value}`);
-    }
-
-    if (value >= 0x20000 || value < 0) { // Limite de 0x20000 para a versão do firmware
-        throw RangeError(`value >= 0x20000 or value < 0: ${value}`);
-    }
-
-    const version = value & 0xffff;
-    if (!check_bcd(version)) { // Verifica o formato BCD.
-        throw RangeError(`value & 0xffff not in BCD format ${version}`);
-    }
-
-    target = value;
-}
-
-export let target = null;
-// DEFININDO O ALVO PARA 12.02 (formato 0xC_MM_mm -> 0x0_12_02)
-set_target(0x1202);
-
-// --- Offsets JSC Consolidados para FW 12.02 ---
-// Offsets do antigo offsets.mjs foram movidos para cá para eliminar conflitos.
+// Firmware: PS4 12.02 
 export const JSC_OFFSETS = {
     JSCell: {
         STRUCTURE_POINTER_OFFSET: 0x8,    // VALIDADO
@@ -75,7 +8,7 @@ export const JSC_OFFSETS = {
         CELL_FLAGS_OR_INDEXING_TYPE_FLATTENED_OFFSET: 0x6,
         CELL_STATE_FLATTENED_OFFSET: 0x7,
     },
-    CallFrame: {
+    CallFrame: { 
         CALLEE_OFFSET: 0x8,         // De JSC::ProtoCallFrame::callee()
         ARG_COUNT_OFFSET: 0x10,     // De JSC::ProtoCallFrame::argumentCountIncludingThis()
         THIS_VALUE_OFFSET: 0x18,    // De JSC::ProtoCallFrame::thisValue()
@@ -94,20 +27,8 @@ export const JSC_OFFSETS = {
         CACHED_OWN_KEYS_OFFSET: 0x48,
         CLASS_INFO_OFFSET: 0x50,
     },
-    // OFFSETS MESCLADOS DO ANTIGO offsets.mjs E CORRIGIDOS
     JSObject: {
-        // Offset para o ponteiro butterfly (armazenamento de propriedades fora do objeto)
-        BUTTERFLY_OFFSET: 0x10, // Antigo js_butterfly. Este é o valor moderno mais comum.
-
-        // Início das propriedades inline (JSValues) - Onde os dados do objeto começam
-        INLINE_PROPERTIES_OFFSET: 0x10, // Antigo js_inline_prop
-
-        // sizeof JSC::JSObject
-        JS_OBJECT_SIZE: 0x10,
-        
-        // Para WebCore::JSHTMLTextAreaElement
-        JSTA_IMPL_OFFSET: 0x18, // Antigo jsta_impl - ponteiro para o objeto DOM
-        JSTA_SIZE: 0x20, // Antigo size_jsta - sizeof JSHTMLTextAreaElement
+        BUTTERFLY_OFFSET: 0x10,
     },
     JSFunction: {
         EXECUTABLE_OFFSET: 0x18, // VALIDADO
@@ -137,16 +58,20 @@ export const JSC_OFFSETS = {
             JSObject_Simple_STRUCTURE_ID: null
         }
     },
-    // OFFSETS MESCLADOS DO ANTIGO offsets.mjs
-    ArrayBufferView: {
-        STRUCTURE_ID_OFFSET: 0x00,
-        FLAGS_OFFSET: 0x04,
+    ArrayBufferView: { // Para TypedArrays como Uint8Array, Uint32Array, DataView
+        // Estes são offsets DENTRO da estrutura ArrayBufferView
+        STRUCTURE_ID_OFFSET: 0x00,      // Relativo ao início do JSCell do ArrayBufferView
+        FLAGS_OFFSET: 0x04,             // Relativo ao início do JSCell do ArrayBufferView
         ASSOCIATED_ARRAYBUFFER_OFFSET: 0x08, // Ponteiro para o JSArrayBuffer real que esta view usa.
         
-        M_VECTOR_OFFSET: 0x10,          // Ponteiro interno de dados da view
-        M_LENGTH_OFFSET: 0x18,          // Comprimento da view (em elementos)
-        M_MODE_OFFSET: 0x1C,            // Flags de modo da view
-        VIEW_SIZE: 0x20                 // sizeof JSArrayBufferView
+        // NOTA IMPORTANTE: M_VECTOR_OFFSET, M_LENGTH_OFFSET e M_MODE_OFFSET para DataView
+        // Podem ser diferentes de ArrayBuffer.CONTENTS_IMPL_POINTER_OFFSET e SIZE_IN_BYTES_OFFSET_FROM_JSARRAYBUFFER_START.
+        // Se a corrupção estiver no backing ArrayBuffer, então se refere aos offsets do ArrayBuffer.
+        // Se o DataView tem suas próprias cópias, esses offsets abaixo são usados.
+        // A hipótese é que DataView acessa esses a partir de sua própria estrutura.
+        M_VECTOR_OFFSET: 0x10,          // Ponteiro interno de dados da view (comum para TypedArrays)
+        M_LENGTH_OFFSET: 0x18,          // Comprimento da view (Number of elements * element_size)
+        M_MODE_OFFSET: 0x1C             // Offset para m_mode/TypeFlags dentro de ArrayBufferView
     },
     ArrayBufferContents: {
         SIZE_IN_BYTES_OFFSET_FROM_CONTENTS_START: 0x8,   // VALIDADO
@@ -159,31 +84,28 @@ export const JSC_OFFSETS = {
     VM: {
         TOP_CALL_FRAME_OFFSET: 0x9E98, // VALIDADO
     },
+    // NOVO: Adicione o offset do vtable da JSC::Structure para DataView aqui
     DataView: {
-        STRUCTURE_VTABLE_OFFSET: "0x3AD62A0", // VERIFICAR PARA FW 12.02
-        DESTROYED_OBJECT_VTABLE: "0x3AD6340", // VERIFICAR PARA FW 12.02
-        VTABLE_OFFSET_0x48_METHOD: 0x48,
-        VTABLE_OFFSET_0x50_METHOD: 0x50,
+        STRUCTURE_VTABLE_OFFSET: 0x3AD62A0, // Já confirmado como o vtable do DataView
+        DESTROYED_OBJECT_VTABLE: 0x3AD6340, // A vtable para a qual o objeto aponta após limpeza/destruição
+        VTABLE_OFFSET_0x48_METHOD: 0x48, // Método chamado por a1->vtable + 72LL
+        VTABLE_OFFSET_0x50_METHOD: 0x50, // Método chamado por a1->vtable + 80LL
 
-        M_MODE_VALUE: 0x0000000B,
-        M_MODE_CANDIDATES: [
-            0x0000000B,
-            0x00000001,
-            0x0000000E,
-            0x0000000F
+        // NOVO: Valor a testar para M_MODE_VALUE
+        // O valor 0x0000000B é um candidato inicial.
+        // Valores comuns em outras versões: 0x00000001, 0x00000003, 0x00000004, 0x0000000E, 0x0000000F
+        M_MODE_VALUE: 0x0000000B, // Valor padrão que será o primeiro a ser testado
+        M_MODE_CANDIDATES: [ // Lista de candidatos para tentativa e erro
+            0x0000000B, // Já testado e provável (Bitfield: IsJSCapableBuffer | IsTypedView | IsDetached)
+            0x00000001, // Outro candidato comum (IsJSCapableBuffer)
+            0x0000000E, // Outro candidato (IsJSCapableBuffer | IsTypedView | IsDetached | CanBeShared)
+            0x0000000F, // Outro candidato (com IsResizable)
        ]
     },
-    EXPECTED_BUTTERFLY_ELEMENT_SIZE: 8,
-
-    WEBKIT_IMPORTS: { // VERIFICAR PARA FW 12.02
-        offset_wk_stack_chk_fail: "0x178",
-        offset_wk_memcpy: "0x188"
-    }
 };
 
 export const WEBKIT_LIBRARY_INFO = {
     NAME: "libSceNKWebKit.sprx",
-    // TODOS OS OFFSETS ABAIXO PRECISAM SER ATUALIZADOS PARA FW 12.02
     FUNCTION_OFFSETS: {
         "JSC::JSFunction::create": "0x58A1D0",
         "JSC::InternalFunction::createSubclassStructure": "0xA86580",
@@ -201,10 +123,10 @@ export const WEBKIT_LIBRARY_INFO = {
         "JSC::ArrayBuffer::create_from_contents": "0x10E5320",
         "JSC::SymbolObject::finishCreation": "0x102C8F0",
         "JSC::StructureCache::emptyStructureForPrototypeFromBaseStructure": "0xCCF870",
-        "JSC::JSObject::put": "0xBD68B0",
+        "JSC::JSObject::put": "0xBD68B0", // Este é um bom candidato para VIRTUAL_PUT_OFFSET
         "JSC::Structure::Structure_constructor": "0x1638A50",
-        "WTF::fastMalloc": "0x1271810",
-        "WTF::fastFree": "0x230C7D0",
+        "WTF::fastMalloc": "0x1271810", // Verifique se este é o principal ou o de 0x230C490
+        "WTF::fastFree": "0x230C7D0", // Já confirmado e utilizado
         "JSValueIsSymbol": "0x126D940",
         "JSC::JSArray::getOwnPropertySlot": "0x2322630",
         "JSC::JSGlobalObject::visitChildren_JSCell": "0x1A5F740",
